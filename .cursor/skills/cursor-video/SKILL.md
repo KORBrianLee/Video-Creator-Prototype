@@ -1,18 +1,30 @@
 ---
 name: cursor-video
-description: Make videos inside Cursor with no extra login, using the agent's built-in image generation and Cursor Video Studio, a local GPU renderer that exports MP4 with hardware encoding. Use when the user asks to create, generate, or make a video, clip, reel, short, ad, trailer, slideshow, or motion piece, unless they explicitly ask for an external video model.
+description: Make videos inside Cursor with no extra login, using the agent's built-in image generation and Video Creator Prototype, a local GPU renderer that exports MP4 with hardware encoding. Use when the user asks to create, generate, or make a video, clip, reel, short, ad, trailer, slideshow, or motion piece, unless they explicitly ask for an external video model.
 ---
 
-# Cursor video
+# Video Creator
 
-Produce a video from the current Cursor session only: generate scene images with the built-in `GenerateImage` tool (namespace `cursor`), write a storyboard into the current workspace, and hand off to Cursor Video Studio (`studio.html`) for GPU rendering. The agent never runs the renderer; the user opens it in Chrome or Edge.
+Produce a video from the current Cursor session only: generate scene images with the built-in `GenerateImage` tool (namespace `cursor`), write a storyboard into the current workspace, and hand off to Video Creator Prototype (`studio.html`) for GPU rendering. The agent never runs the renderer; the user opens it in Chrome or Edge.
 
 All paths below are relative to the current workspace root.
 
 - Storyboards: `video-projects/<slug>/storyboard.json`
 - Generated images: wherever `GenerateImage` saves them (by default the workspace `assets/` folder)
-- Renderer: `studio.html` from Cursor Video Studio. Find it with a glob for `**/studio.html` in the workspace; if it is not there, the user has it in their own download location.
-- Schema: the "스토리보드 형식" section of Cursor Video Studio's `README.md`; example at `video-projects/_template/storyboard.json` when the studio folder is the workspace.
+- Renderer: `studio.html` from Video Creator Prototype. Find it with a glob for `**/studio.html` in the workspace; if it is not there, the user has it in their own download location.
+- Schema: the "스토리보드 형식" section of the project's `README.md`; example at `video-projects/_template/storyboard.json` when the studio folder is the workspace.
+
+## Content rules
+
+These apply before any image is generated. If a request needs one of these, explain why and offer an original alternative instead.
+
+- No real, identifiable people (celebrities, politicians, private individuals) by name or likeness, unless the user supplies their own photo of themselves as a reference.
+- No copyrighted characters, franchises, or artworks, and no "in the style of <living artist>" prompts. Describe the visual qualities instead (lighting, palette, medium).
+- No real brand logos, trademarks, or product packaging. Use invented, generic products.
+- No content meant to deceive: fake news footage, impersonation, fabricated evidence, or anything presented as a real event.
+- No sexual content involving minors, no graphic violence, no hate content.
+- `music` only with a file the user says they have rights to use.
+- When the video depicts realistic people or events, suggest adding an "AI 생성 영상" caption on the last scene.
 
 ## Workflow
 
@@ -70,7 +82,7 @@ For photoreal requests, write prompts that read like a camera description (lens,
 
 ## Music
 
-The studio mixes one audio track (`music`, looped, faded out at the end). The agent cannot create audio files; set `music` only when the user provides a file, using its file name.
+The studio mixes one audio track (`music`, looped, faded out at the end). The agent cannot create audio files; set `music` only when the user provides a file they have rights to use, using its file name.
 
 ## Limits to state plainly
 

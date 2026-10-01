@@ -1,5 +1,5 @@
 {
-  "title": "cursor-video-studio-demo",
+  "title": "video-creator-demo",
   "aspect": "16:9",
   "quality": "1080p",
   "fps": 30,
@@ -8,7 +8,7 @@
     {
       "background": ["#0f2027", "#203a43", "#2c5364"],
       "duration": 3.5,
-      "title": "Cursor Video Studio"
+      "title": "Video Creator Prototype"
     },
     {
       "background": ["#1a1a2e", "#16213e", "#0f3460"],
@@ -27,7 +27,7 @@
       "background": ["#42275a", "#734b6d"],
       "duration": 3.5,
       "title": "로그인 없이",
-      "caption": "Cursor 에이전트가 만든 이미지로 바로 MP4를 만듭니다"
+      "caption": "AI 에이전트가 만든 이미지로 바로 MP4를 만듭니다"
     }
   ]
 }

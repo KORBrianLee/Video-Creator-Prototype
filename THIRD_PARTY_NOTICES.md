@@ -1,6 +1,16 @@
+# Third-party notices
+
+`studio.html` loads the following library at runtime from jsDelivr. It is not bundled in this repository.
+
+## mp4-muxer 5.2.2
+
+- Source: https://github.com/Vanilagy/mp4-muxer
+- Loaded from: https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.2/+esm
+
+```
 MIT License
 
-Copyright (c) 2026 KORBrianLee
+Copyright (c) 2023 Vanilagy
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,3 +29,4 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+```

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Cursor Video Studio</title>
+<title>Video Creator Prototype</title>
 <style>
   :root {
     --bg: #0b0d12; --panel: #141821; --line: #232a36; --text: #e6e9ef;
@@ -76,7 +76,7 @@
 <div class="app">
   <aside>
     <div>
-      <h1>Cursor Video Studio</h1>
+      <h1>Video Creator Prototype</h1>
       <div class="sub" id="gpuInfo">GPU 확인 중…</div>
       <div class="sub" id="encInfo"></div>
     </div>
@@ -170,16 +170,16 @@ const SKIP_DIRS = new Set(['node_modules', 'renders']);
 const AUDIO_RATE = 48000;
 
 const DEMO = {
-  title: 'Cursor Video Studio 데모',
+  title: 'video-creator-demo',
   aspect: '16:9', quality: '1080p', fps: 30, transition: 0.8,
   scenes: [
-    { background: ['#0f2027', '#203a43', '#2c5364'], duration: 3.5, title: 'Cursor Video Studio' },
+    { background: ['#0f2027', '#203a43', '#2c5364'], duration: 3.5, title: 'Video Creator Prototype' },
     { background: ['#1a1a2e', '#16213e', '#0f3460'], duration: 3.5, title: 'GPU로 합성',
       caption: 'WebGL2 셰이더가 장면, 전환, 색보정을 한 번에 처리합니다' },
     { background: ['#232526', '#414345'], duration: 3.5, title: '하드웨어 인코딩', transitionType: 'fade-black',
       caption: 'NVENC · Quick Sync · AMF로 실시간보다 빠르게 내보냅니다' },
     { background: ['#42275a', '#734b6d'], duration: 3.5, title: '로그인 없이',
-      caption: 'Cursor 에이전트가 만든 이미지로 바로 MP4를 만듭니다' },
+      caption: 'AI 에이전트가 만든 이미지로 바로 MP4를 만듭니다' },
   ],
 };
 
