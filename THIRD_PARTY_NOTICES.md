@@ -1,8 +1,14 @@
 # Third-party notices
 
+## FFmpeg
+
+`video_render.py` runs an FFmpeg executable that the user installs separately. FFmpeg is not bundled or redistributed by this repository. FFmpeg is licensed under the LGPL 2.1 or later, or the GPL depending on how it was built; see https://ffmpeg.org/legal.html. FFmpeg is a trademark of Fabrice Bellard.
+
+## Libraries loaded by studio.html
+
 `studio.html` loads the following library at runtime from jsDelivr. It is not bundled in this repository.
 
-## mp4-muxer 5.2.2
+### mp4-muxer 5.2.2
 
 - Source: https://github.com/Vanilagy/mp4-muxer
 - Loaded from: https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.2/+esm

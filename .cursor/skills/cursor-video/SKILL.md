@@ -5,13 +5,14 @@ description: Make videos inside Cursor with no extra login, using the agent's bu
 
 # Video Creator
 
-Produce a video from the current Cursor session only: generate scene images with the built-in `GenerateImage` tool (namespace `cursor`), write a storyboard into the current workspace, and hand off to Video Creator Prototype (`studio.html`) for GPU rendering. The agent never runs the renderer; the user opens it in Chrome or Edge.
+Produce a finished MP4 from the current Cursor session only: generate scene images with the built-in `GenerateImage` tool (namespace `cursor`), write a storyboard into the current workspace, then render it yourself with `video_render.py` (ffmpeg, GPU encoder when available). Only when that is impossible, hand off to the browser studio (`studio.html`).
 
 All paths below are relative to the current workspace root.
 
 - Storyboards: `video-projects/<slug>/storyboard.json`
 - Generated images: wherever `GenerateImage` saves them (by default the workspace `assets/` folder)
-- Renderer: `studio.html` from Video Creator Prototype. Find it with a glob for `**/studio.html` in the workspace; if it is not there, the user has it in their own download location.
+- Agent renderer: `video_render.py`. Find it with a glob for `**/video_render.py`; if it is not in the workspace, ask the user where they saved the Video Creator Prototype folder and use the copy there.
+- Browser renderer (fallback): `studio.html`. Find it with a glob for `**/studio.html`; if it is not in the workspace, the user has it in their own download location.
 - Schema: the "스토리보드 형식" section of the project's `README.md`; example at `video-projects/_template/storyboard.json` when the studio folder is the workspace.
 
 ## Content rules
@@ -35,13 +36,18 @@ These apply before any image is generated. If a request needs one of these, expl
    - `aspect_ratio` equal to the video aspect (`16:9`, `9:16`, `1:1`, `4:3`, `3:4`).
    - `filename` as `<slug>-01.png`, `<slug>-02.png`, … so names never collide across projects. The studio matches images by file name only.
    - For a recurring character or product, pass the first good image in `reference_image_paths` for later scenes.
-   - Never ask for text, captions, logos, or watermarks inside images; the studio renders text.
+   - Never ask for text, captions, logos, or watermarks inside images; the renderer draws text.
    - Record the path each call returns.
 5. **Write the storyboard** to `video-projects/<slug>/storyboard.json`. Set `image` to the returned path and `title` to `<slug>`.
-6. **Hand off.** Tell the user, in their language:
-   - Open `studio.html` and connect this workspace folder once with **작업 폴더 연결**. After that, press ↻ and the newest project loads automatically.
+6. **Render the MP4 yourself.** Run from the workspace root:
+   - Check tools: `ffmpeg -version` and `python --version` (on Windows also try `py -3 --version`; Python 3.8+).
+   - Render: `python <path-to>/video_render.py video-projects/<slug>/storyboard.json` (add `--quality 4k` or `--codec hevc` only if asked). Allow several minutes; it prints progress every 10% and ends with `Done: <path>`.
+   - Output is `renders/<slug>.mp4`. Confirm with `ffprobe -v error -show_entries format=duration,size -of default=nw=1 renders/<slug>.mp4` and report path, length, size, and the encoder line it printed.
+   - On `Error: images not found`, fix the `image` paths in the storyboard and rerun. On `Error: ffmpeg failed`, read the log tail it prints, fix the storyboard, and rerun once.
+   - If ffmpeg is missing, ask the user before installing it: Windows `winget install --id Gyan.FFmpeg -e`, macOS `brew install ffmpeg`, Linux `sudo apt install ffmpeg`. A new terminal may be needed before `ffmpeg` is on PATH; `video_render.py` also checks the winget links folder.
+7. **Fallback only if step 6 cannot run** (no working terminal, no Python, or the user declines installing ffmpeg). Tell the user, in their language:
+   - Open `studio.html` in Chrome or Edge and connect this workspace folder once with **작업 폴더 연결**. After that, press ↻ and the newest project loads automatically.
    - Press **영상 내보내기** (`Ctrl+Enter`). The MP4 is written to `renders/<slug>.mp4` inside the connected folder.
-   - Without a connected folder, drag `storyboard.json` and the generated images into the studio instead.
 
 ## Storyboard skeleton
 
@@ -82,9 +88,9 @@ For photoreal requests, write prompts that read like a camera description (lens,
 
 ## Music
 
-The studio mixes one audio track (`music`, looped, faded out at the end). The agent cannot create audio files; set `music` only when the user provides a file they have rights to use, using its file name.
+The renderer mixes one audio track (`music`, looped, faded out at the end). The agent cannot create audio files; set `music` only when the user provides a file they have rights to use, using its file name.
 
 ## Limits to state plainly
 
 - Motion is camera movement over still images plus transitions, not generated subject motion.
-- Rendering and MP4 export happen in the user's browser; the agent cannot verify the final file.
+- You cannot watch the video. You can confirm the file exists with the expected length, but ask the user to play it to judge the result.
