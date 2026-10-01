@@ -1,0 +1,107 @@
+Video Creator Prototype - 빠른 사용법
+=====================================
+
+Cursor 에이전트 채팅에 영상 내용을 쓰면, 에이전트가 장면 이미지를 만들고
+MP4 파일까지 완성해 주는 도구입니다. 별도 로그인은 없습니다.
+(Cursor와 제휴하지 않은 비공식 도구입니다.)
+
+준비물: Cursor(이미지 생성이 되는 플랜), Git, Python 3.8 이상, ffmpeg
+아래 명령은 Windows의 Git Bash 기준입니다. macOS는 [mac] 표시를 참고하세요.
+
+
+1. 내려받기
+-----------
+  git clone -b prototype https://github.com/KORBrianLee/Video-Creator-Prototype.git
+  cd Video-Creator-Prototype
+
+
+2. Python 확인 (없으면 설치)
+---------------------------
+  python --version
+
+  -> "Python 3.x.x"가 나오면 통과.
+  -> 안 나오면 설치 후 Git Bash를 새로 엽니다.
+     winget install --id Python.Python.3.12 -e
+     [mac] brew install python
+
+
+3. ffmpeg 설치
+--------------
+  winget install --id Gyan.FFmpeg -e
+  [mac] brew install ffmpeg
+
+  설치 후 Git Bash를 닫고 새로 연 다음 확인합니다.
+  ffmpeg -version
+
+
+4. 데모로 동작 확인
+-------------------
+  cd Video-Creator-Prototype
+  python video_render.py video-projects/demo/storyboard.json
+
+  -> 마지막 줄에 "Done: ...renders\video-creator-demo.mp4"가 나오면 성공.
+  -> 영상 열어 보기:
+     start renders/video-creator-demo.mp4
+     [mac] open renders/video-creator-demo.mp4
+
+
+5. Cursor에서 쓰기
+------------------
+  Cursor에서 File -> Open Folder 로 Video-Creator-Prototype 폴더를 엽니다.
+  에이전트 채팅에 이렇게 요청합니다.
+
+    예) 제주 바다 일출 20초 영상 만들어 줘, 16:9
+    예) 신제품 커피 머신 소개 15초 세로 영상, 자막은 한국어로
+
+  에이전트가 순서대로 처리합니다.
+    장면 이미지 생성 -> storyboard.json 작성 -> MP4 렌더링
+  완성 파일: renders/<영상이름>.mp4
+
+
+6. 추천 모델과 생각 단계
+------------------------
+  영상 화질은 채팅 모델이 아니라 Cursor 내장 이미지 생성이 결정합니다.
+  채팅 모델은 장면 기획, 이미지 프롬프트 작성, 명령 실행만 하므로
+  비싼 모델이 필요 없습니다.
+
+  - 평소(가성비): Composer 2.5 fast 또는 Gemini 3.8 Flash, 생각 단계 낮음~보통
+  - 광고·중요한 영상: Claude Sonnet 5.5, 생각 단계 보통
+  - 높음/최대 생각 단계, Opus급 모델은 결과가 거의 같고 비용만 늘어납니다.
+
+  사용량을 가장 많이 쓰는 것은 이미지 개수입니다.
+  "장면 5개로", "이미지 다시 만들지 말고 자막만 고쳐 줘"처럼 요청하면 아낄 수 있습니다.
+
+
+7. (선택) 다른 프로젝트에서도 쓰기
+---------------------------------
+  cp -r .cursor/skills/cursor-video ~/.cursor/skills/
+
+  Cursor를 다시 시작하면 어느 폴더에서든 동작합니다.
+  Video-Creator-Prototype 폴더는 지우지 마세요.
+  에이전트가 video_render.py 위치를 물으면 이 폴더 경로를 알려 주면 됩니다.
+
+
+문제 해결
+---------
+  - "python: command not found" 또는 Microsoft Store가 열림
+      -> python 대신 py -3 를 써 보세요.
+         예) py -3 video_render.py video-projects/demo/storyboard.json
+
+  - "ffmpeg not found"
+      -> Git Bash를 새로 열어 보세요. 그래도 안 되면 PC를 재시작합니다.
+
+  - 에이전트 채팅에서 터미널 명령이 전부 실패함 (TEMP 경로 오류 등)
+      -> Git Bash에서 아래를 실행한 뒤 Cursor를 완전히 껐다 켭니다.
+         setx TEMP "$LOCALAPPDATA\Temp"; setx TMP "$LOCALAPPDATA\Temp"
+      -> 그래도 안 되면 에이전트가 브라우저 렌더러(studio.html) 사용법을 안내합니다.
+
+  - "Error: images not found"
+      -> 에이전트에게 "이미지 경로 고쳐서 다시 렌더링해 줘"라고 요청하세요.
+
+
+지켜 주세요
+-----------
+  - 실존 인물, 남의 캐릭터·로고·브랜드, 저작권 있는 음악은 쓰지 않습니다.
+  - 움직임은 정지 이미지 위의 카메라 이동과 전환입니다.
+    사람이 걷는 것 같은 실제 동작은 만들지 않습니다.
+  - 자세한 내용은 README.md를 보세요.
