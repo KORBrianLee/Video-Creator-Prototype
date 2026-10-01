@@ -1,0 +1,5 @@
+assets/
+renders/
+video-projects/*
+!video-projects/demo/
+!video-projects/_template/

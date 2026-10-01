@@ -1,0 +1,1409 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cursor Video Studio</title>
+<style>
+  :root {
+    --bg: #0b0d12; --panel: #141821; --line: #232a36; --text: #e6e9ef;
+    --muted: #8a93a6; --accent: #6c8cff; --danger: #ff6b6b; --ok: #3ecf8e;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 14px/1.5 'Pretendard', 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, sans-serif;
+  }
+  .app { display: grid; grid-template-columns: 350px 1fr; height: 100vh; }
+  aside {
+    background: var(--panel); border-right: 1px solid var(--line); padding: 16px;
+    overflow: auto; display: flex; flex-direction: column; gap: 14px;
+  }
+  main { display: flex; flex-direction: column; min-width: 0; }
+  h1 { font-size: 16px; margin: 0; }
+  .sub { color: var(--muted); font-size: 12px; }
+  .ok { color: var(--ok); }
+  .warn { color: var(--danger); }
+  .drop {
+    border: 1.5px dashed var(--line); border-radius: 10px; padding: 14px;
+    text-align: center; color: var(--muted); cursor: pointer; transition: .15s; font-size: 13px;
+  }
+  .drop.over { border-color: var(--accent); color: var(--text); background: #1a2030; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  button, select {
+    background: #1d2330; color: var(--text); border: 1px solid var(--line);
+    border-radius: 8px; padding: 7px 11px; font: inherit; cursor: pointer;
+  }
+  select { padding: 6px 8px; }
+  button:hover:not(:disabled), select:hover:not(:disabled) { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled, select:disabled { opacity: .45; cursor: default; }
+  .grow { flex: 1; min-width: 0; }
+  .section-title { font-size: 12px; color: var(--muted); letter-spacing: .06em; margin-bottom: 6px; }
+  ul.list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  ul.list li {
+    display: flex; gap: 8px; align-items: center; font-size: 12px; cursor: pointer;
+    background: #10141c; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px;
+  }
+  ul.list li:hover { border-color: var(--accent); }
+  .thumb { width: 52px; height: 30px; border-radius: 4px; background: #222 center / cover; flex: none; }
+  .clip { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  details summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+  textarea {
+    width: 100%; min-height: 240px; margin-top: 8px; background: #0e1117; color: var(--text);
+    border: 1px solid var(--line); border-radius: 8px; padding: 8px;
+    font: 12px/1.45 ui-monospace, Consolas, monospace; resize: vertical;
+  }
+  .stage { flex: 1; display: flex; align-items: center; justify-content: center; padding: 20px; min-height: 0; }
+  canvas {
+    max-width: 100%; max-height: 100%; background: #000; border-radius: 6px;
+    box-shadow: 0 10px 40px rgba(0,0,0,.5);
+  }
+  .bar {
+    display: flex; align-items: center; gap: 12px; padding: 12px 20px;
+    border-top: 1px solid var(--line); background: var(--panel);
+  }
+  .bar input[type=range] { flex: 1; }
+  .time { font-variant-numeric: tabular-nums; color: var(--muted); min-width: 110px; text-align: right; }
+  .progress { height: 6px; background: #10141c; border-radius: 4px; overflow: hidden; }
+  .progress > div { height: 100%; width: 0; background: var(--accent); }
+  .status { font-size: 12px; color: var(--muted); white-space: pre-wrap; }
+  .status.error { color: var(--danger); }
+  kbd { font: 11px ui-monospace, Consolas, monospace; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <div>
+      <h1>Cursor Video Studio</h1>
+      <div class="sub" id="gpuInfo">GPU 확인 중…</div>
+      <div class="sub" id="encInfo"></div>
+    </div>
+
+    <div>
+      <div class="section-title">작업 폴더</div>
+      <div class="row">
+        <button id="connect" class="grow">작업 폴더 연결</button>
+        <button id="rescan" title="새로고침" disabled>↻</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <select id="projectSelect" class="grow" disabled><option>프로젝트 없음</option></select>
+      </div>
+    </div>
+
+    <div class="drop" id="drop">
+      storyboard.json · 이미지 · 음악 파일이나 폴더를 끌어다 놓기<br>
+      <span class="sub">클릭하면 파일 선택 · 여러 번 나눠 넣어도 됩니다</span>
+    </div>
+    <input type="file" id="fileInput" multiple hidden accept=".json,image/*,audio/*">
+    <div class="row">
+      <button id="demo">데모</button>
+      <button id="reset">초기화</button>
+    </div>
+
+    <div>
+      <div class="section-title">장면</div>
+      <ul class="list" id="sceneList"></ul>
+    </div>
+
+    <div class="status" id="status">작업 폴더를 연결하거나 스토리보드를 넣으세요.</div>
+
+    <details id="editorBox">
+      <summary>스토리보드 편집</summary>
+      <textarea id="editor" spellcheck="false" placeholder="storyboard.json 내용"></textarea>
+      <div class="row" style="margin-top:8px">
+        <button id="apply">적용</button>
+        <button id="save" disabled>파일에 저장</button>
+      </div>
+    </details>
+
+    <div class="sub">
+      <kbd>Space</kbd> 재생 · <kbd>Ctrl</kbd>+<kbd>Enter</kbd> 내보내기 · <kbd>Ctrl</kbd>+<kbd>S</kbd> 저장
+    </div>
+  </aside>
+
+  <main>
+    <div class="stage"><canvas id="canvas" width="1920" height="1080"></canvas></div>
+    <div class="bar">
+      <button id="play" disabled>재생</button>
+      <input type="range" id="scrub" min="0" max="1000" value="0" disabled>
+      <span class="time" id="time">0.0 / 0.0s</span>
+      <select id="resSelect" title="해상도">
+        <option value="">스토리보드 해상도</option>
+        <option value="720p">720p</option>
+        <option value="1080p">1080p</option>
+        <option value="1440p">1440p</option>
+        <option value="4k">4K</option>
+      </select>
+      <select id="codecSelect" title="코덱">
+        <option value="h264">H.264</option>
+        <option value="hevc">HEVC</option>
+        <option value="av1">AV1</option>
+      </select>
+      <button class="primary" id="render" disabled>영상 내보내기</button>
+    </div>
+    <div class="bar" id="renderBar" hidden style="flex-direction:column;align-items:stretch;gap:6px">
+      <div class="progress"><div id="progress"></div></div>
+      <div class="row" style="justify-content:space-between">
+        <span class="status" id="renderStatus"></span>
+        <button id="cancel">취소</button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script type="module">
+const MUXER_URL = 'https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.2/+esm';
+
+const $ = id => document.getElementById(id);
+const canvas = $('canvas');
+
+const ASPECTS = { '16:9': [16, 9], '9:16': [9, 16], '1:1': [1, 1], '4:3': [4, 3], '3:4': [3, 4], '21:9': [21, 9] };
+const QUALITY = { '720p': 720, '1080p': 1080, '1440p': 1440, '4k': 2160 };
+const MOTIONS = ['zoom-in', 'zoom-out', 'pan-left', 'pan-right', 'pan-up', 'pan-down', 'static'];
+const TRANSITIONS = ['crossfade', 'fade-black', 'cut'];
+const FONT = "'Pretendard','Malgun Gothic','Apple SD Gothic Neo','Noto Sans KR',system-ui,sans-serif";
+const IMAGE_RE = /\.(png|jpe?g|webp|gif|bmp|avif)$/i;
+const AUDIO_RE = /\.(mp3|wav|ogg|m4a|aac|flac)$/i;
+const SKIP_DIRS = new Set(['node_modules', 'renders']);
+const AUDIO_RATE = 48000;
+
+const DEMO = {
+  title: 'Cursor Video Studio 데모',
+  aspect: '16:9', quality: '1080p', fps: 30, transition: 0.8,
+  scenes: [
+    { background: ['#0f2027', '#203a43', '#2c5364'], duration: 3.5, title: 'Cursor Video Studio' },
+    { background: ['#1a1a2e', '#16213e', '#0f3460'], duration: 3.5, title: 'GPU로 합성',
+      caption: 'WebGL2 셰이더가 장면, 전환, 색보정을 한 번에 처리합니다' },
+    { background: ['#232526', '#414345'], duration: 3.5, title: '하드웨어 인코딩', transitionType: 'fade-black',
+      caption: 'NVENC · Quick Sync · AMF로 실시간보다 빠르게 내보냅니다' },
+    { background: ['#42275a', '#734b6d'], duration: 3.5, title: '로그인 없이',
+      caption: 'Cursor 에이전트가 만든 이미지로 바로 MP4를 만듭니다' },
+  ],
+};
+
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const easeInOut = t => 0.5 - 0.5 * Math.cos(Math.PI * clamp(t));
+const easeOut = t => 1 - Math.pow(1 - clamp(t), 3);
+const baseName = p => String(p || '').split(/[\\/]/).pop().toLowerCase();
+const slug = s => String(s || '').trim().replace(/[\\/:*?"<>|]+/g, '').replace(/\s+/g, '-').slice(0, 60) || 'video';
+const effectValue = (v, def) => v === true || v === undefined ? def : v === false ? 0 : Number(v) || 0;
+
+function setStatus(msg, isError = false) {
+  const el = $('status');
+  el.textContent = msg;
+  el.classList.toggle('error', isError);
+}
+
+const yieldChannel = new MessageChannel();
+const yieldQueue = [];
+yieldChannel.port1.onmessage = () => yieldQueue.shift()?.();
+const yieldTask = () => new Promise(res => { yieldQueue.push(res); yieldChannel.port2.postMessage(0); });
+const sleep = ms => new Promise(res => setTimeout(res, ms));
+
+// ================= GPU renderer =================
+
+const LAYER_VS = `#version 300 es
+in vec2 aPos;
+uniform vec4 uDst;
+uniform vec4 uSrc;
+uniform vec2 uRes;
+out vec2 vUV;
+void main() {
+  vec2 p = mix(uDst.xy, uDst.zw, aPos);
+  gl_Position = vec4(p.x / uRes.x * 2.0 - 1.0, 1.0 - p.y / uRes.y * 2.0, 0.0, 1.0);
+  vUV = mix(uSrc.xy, uSrc.zw, aPos);
+}`;
+
+const LAYER_FS = `#version 300 es
+precision highp float;
+in vec2 vUV;
+uniform sampler2D uTex;
+uniform float uAlpha;
+out vec4 outColor;
+void main() { outColor = texture(uTex, vUV) * uAlpha; }`;
+
+const POST_VS = `#version 300 es
+in vec2 aPos;
+out vec2 vUV;
+void main() { vUV = aPos; gl_Position = vec4(aPos * 2.0 - 1.0, 0.0, 1.0); }`;
+
+const POST_FS = `#version 300 es
+precision highp float;
+in vec2 vUV;
+uniform sampler2D uScene;
+uniform vec2 uRes;
+uniform float uTime, uFade, uVignette, uGrain, uBar, uContrast, uSaturation, uWarmth;
+out vec4 outColor;
+float hash(vec2 p) {
+  vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+  p3 += dot(p3, p3.yzx + 33.33);
+  return fract((p3.x + p3.y) * p3.z);
+}
+void main() {
+  vec3 c = texture(uScene, vUV).rgb;
+  float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+  c = mix(vec3(l), c, uSaturation);
+  c = (c - 0.5) * uContrast + 0.5;
+  c += vec3(0.025, 0.006, -0.025) * uWarmth;
+  vec2 d = vUV - 0.5;
+  d.x *= uRes.x / uRes.y;
+  float r = length(d) / length(vec2(0.5 * uRes.x / uRes.y, 0.5));
+  c *= 1.0 - uVignette * smoothstep(0.4, 1.0, r);
+  float n = hash(vUV * uRes + floor(uTime * 60.0) * vec2(17.13, 31.71)) - 0.5;
+  c += n * uGrain * (1.0 - 0.5 * l);
+  float py = (1.0 - vUV.y) * uRes.y;
+  if (py < uBar || py > uRes.y - uBar) c = vec3(0.0);
+  outColor = vec4(clamp(c * uFade, 0.0, 1.0), 1.0);
+}`;
+
+class GPU {
+  constructor(el) {
+    const gl = el.getContext('webgl2', {
+      alpha: false, antialias: false, depth: false, stencil: false,
+      premultipliedAlpha: true, preserveDrawingBuffer: false, powerPreference: 'high-performance',
+    });
+    if (!gl) throw new Error('WebGL2를 사용할 수 없습니다. Chrome 또는 Edge 최신 버전에서 여세요.');
+    this.gl = gl;
+    this.canvas = el;
+    this.aniso = gl.getExtension('EXT_texture_filter_anisotropic');
+    this.maxAniso = this.aniso ? gl.getParameter(this.aniso.MAX_TEXTURE_MAX_ANISOTROPY_EXT) : 1;
+    this.maxTex = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+    const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+    this.name = dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+
+    this.layer = this.program(LAYER_VS, LAYER_FS, ['uDst', 'uSrc', 'uRes', 'uTex', 'uAlpha']);
+    this.post = this.program(POST_VS, POST_FS,
+      ['uScene', 'uRes', 'uTime', 'uFade', 'uVignette', 'uGrain', 'uBar', 'uContrast', 'uSaturation', 'uWarmth']);
+
+    gl.bindVertexArray(gl.createVertexArray());
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+    this.w = 0; this.h = 0; this.fbo = null; this.fboTex = null;
+  }
+
+  program(vsSrc, fsSrc, uniforms) {
+    const gl = this.gl;
+    const p = gl.createProgram();
+    for (const [type, src] of [[gl.VERTEX_SHADER, vsSrc], [gl.FRAGMENT_SHADER, fsSrc]]) {
+      const s = gl.createShader(type);
+      gl.shaderSource(s, src);
+      gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+      gl.attachShader(p, s);
+    }
+    gl.bindAttribLocation(p, 0, 'aPos');
+    gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+    const u = {};
+    for (const n of uniforms) u[n] = gl.getUniformLocation(p, n);
+    return { p, u };
+  }
+
+  resize(w, h) {
+    if (w === this.w && h === this.h) return;
+    const gl = this.gl;
+    this.canvas.width = this.w = w;
+    this.canvas.height = this.h = h;
+    if (this.fbo) { gl.deleteTexture(this.fboTex); gl.deleteFramebuffer(this.fbo); }
+    this.fboTex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, this.fboTex);
+    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, w, h);
+    this.setSampling(false);
+    this.fbo = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.fboTex, 0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  }
+
+  setSampling(mipmap) {
+    const gl = this.gl;
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, mipmap ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR);
+    if (mipmap && this.aniso) {
+      gl.texParameterf(gl.TEXTURE_2D, this.aniso.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(16, this.maxAniso));
+    }
+  }
+
+  texture(source, mipmap = false) {
+    const gl = this.gl;
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+    if (mipmap) gl.generateMipmap(gl.TEXTURE_2D);
+    this.setSampling(mipmap);
+    return { tex, w: source.width, h: source.height };
+  }
+
+  release(t) { if (t) this.gl.deleteTexture(t.tex); }
+
+  begin() {
+    const gl = this.gl;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
+    gl.viewport(0, 0, this.w, this.h);
+    gl.clearColor(0, 0, 0, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    gl.useProgram(this.layer.p);
+    gl.uniform2f(this.layer.u.uRes, this.w, this.h);
+    gl.uniform1i(this.layer.u.uTex, 0);
+    gl.activeTexture(gl.TEXTURE0);
+  }
+
+  draw(t, dst, src, alpha) {
+    if (!t || alpha <= 0) return;
+    const gl = this.gl, u = this.layer.u;
+    gl.bindTexture(gl.TEXTURE_2D, t.tex);
+    gl.uniform4f(u.uDst, dst[0], dst[1], dst[2], dst[3]);
+    gl.uniform4f(u.uSrc, src[0], src[1], src[2], src[3]);
+    gl.uniform1f(u.uAlpha, alpha);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  }
+
+  finish(fx) {
+    const gl = this.gl, u = this.post.u;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, this.w, this.h);
+    gl.disable(gl.BLEND);
+    gl.useProgram(this.post.p);
+    gl.bindTexture(gl.TEXTURE_2D, this.fboTex);
+    gl.uniform1i(u.uScene, 0);
+    gl.uniform2f(u.uRes, this.w, this.h);
+    gl.uniform1f(u.uTime, fx.time);
+    gl.uniform1f(u.uFade, fx.fade);
+    gl.uniform1f(u.uVignette, fx.vignette);
+    gl.uniform1f(u.uGrain, fx.grain);
+    gl.uniform1f(u.uBar, fx.bar);
+    gl.uniform1f(u.uContrast, fx.contrast);
+    gl.uniform1f(u.uSaturation, fx.saturation);
+    gl.uniform1f(u.uWarmth, fx.warmth);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  }
+
+  blank() {
+    const gl = this.gl;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, this.w || this.canvas.width, this.h || this.canvas.height);
+    gl.clearColor(0, 0, 0, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+  }
+}
+
+// ================= state =================
+
+let gpu = null;
+const droppedFiles = new Map();
+const diskAssets = new Map();
+const imageCache = new Map();
+const bgCache = new Map();
+const thumbUrls = new Map();
+let sceneAssets = [];
+let sb = null, timeline = null;
+let playing = false, playStart = 0, playOffset = 0, rafId = 0, scrubbing = false;
+let rendering = null;
+let rootHandle = null, projects = [], currentProject = null;
+let muxerModule = null;
+
+// ================= storyboard =================
+
+function normalize(raw, qualityOverride) {
+  if (!raw || !Array.isArray(raw.scenes) || !raw.scenes.length) throw new Error('scenes 배열이 비어 있습니다.');
+  const aspect = ASPECTS[raw.aspect] ? raw.aspect : '16:9';
+  let width = Number(raw.width), height = Number(raw.height);
+  if (qualityOverride || !(width > 0 && height > 0)) {
+    const short = QUALITY[String(qualityOverride || raw.quality || '1080p').toLowerCase()] || 1080;
+    const [aw, ah] = ASPECTS[aspect];
+    if (aw >= ah) { height = short; width = Math.round(short * aw / ah); }
+    else { width = short; height = Math.round(short * ah / aw); }
+  }
+  width -= width % 2;
+  height -= height % 2;
+
+  const defTransition = raw.transition ?? 0.8;
+  const defType = TRANSITIONS.includes(raw.transitionType) ? raw.transitionType : 'crossfade';
+  const scenes = raw.scenes.map((s, i) => {
+    const type = TRANSITIONS.includes(s.transitionType) ? s.transitionType : defType;
+    return {
+      image: s.image || null,
+      background: s.background || '#000',
+      duration: Math.max(0.5, Number(s.duration) || 4),
+      motion: MOTIONS.includes(s.motion) ? s.motion : (s.image ? MOTIONS[i % 4] : 'static'),
+      intensity: clamp(s.intensity ?? 0.15, 0, 0.6),
+      focus: Array.isArray(s.focus) ? [clamp(Number(s.focus[0])), clamp(Number(s.focus[1]))] : null,
+      transition: i === 0 || type === 'cut' ? 0 : Math.max(0, Number(s.transition ?? defTransition) || 0),
+      transitionType: type,
+      title: s.title || '',
+      caption: s.caption || '',
+    };
+  });
+
+  const e = raw.effects || {};
+  const look = raw.look || {};
+  const fps = clamp(Number(raw.fps) || 30, 12, 60);
+  const pixels = width * height * fps;
+  const defaultMbps = Math.round(clamp(pixels / 1e6 * 0.22, 6, 80));
+  return {
+    title: raw.title || 'video',
+    width, height, fps, aspect, scenes,
+    effects: {
+      vignette: effectValue(e.vignette, 0.35),
+      grain: effectValue(e.grain, 0.04),
+      letterbox: !!e.letterbox,
+    },
+    look: {
+      contrast: Number(look.contrast ?? 1.05),
+      saturation: Number(look.saturation ?? 1.0),
+      warmth: Number(look.warmth ?? 0),
+    },
+    fadeIn: Math.max(0, raw.fadeIn ?? 0.6),
+    fadeOut: Math.max(0, raw.fadeOut ?? 0.8),
+    music: raw.music || null,
+    musicVolume: clamp(raw.musicVolume ?? 0.8),
+    bitrate: (Number(raw.bitrate) || defaultMbps) * 1e6,
+  };
+}
+
+function buildTimeline(board) {
+  const starts = [];
+  let t = 0;
+  board.scenes.forEach((s, i) => {
+    if (i > 0) {
+      s.transition = Math.min(s.transition, board.scenes[i - 1].duration / 2, s.duration / 2);
+      t -= s.transition;
+    }
+    starts.push(t);
+    t += s.duration;
+  });
+  return { starts, total: t };
+}
+
+function letterboxBar(W, H) {
+  return W > H && W / H < 2.39 ? Math.round((H - W / 2.39) / 2) : 0;
+}
+
+// ================= scene assets (GPU textures) =================
+
+async function getAsset(key) {
+  if (droppedFiles.has(key)) return droppedFiles.get(key);
+  const h = diskAssets.get(key);
+  if (!h) return null;
+  try { return await h.getFile(); } catch { return null; }
+}
+
+async function imageTexture(key) {
+  if (imageCache.has(key)) return imageCache.get(key);
+  const file = await getAsset(key);
+  if (!file) return null;
+  let bmp;
+  try { bmp = await createImageBitmap(file, { imageOrientation: 'from-image', premultiplyAlpha: 'premultiply' }); }
+  catch { return null; }
+  const longest = Math.max(bmp.width, bmp.height);
+  if (longest > gpu.maxTex) {
+    const k = gpu.maxTex / longest;
+    const resized = await createImageBitmap(bmp, {
+      resizeWidth: Math.floor(bmp.width * k), resizeHeight: Math.floor(bmp.height * k), resizeQuality: 'high',
+    });
+    bmp.close();
+    bmp = resized;
+  }
+  const tex = gpu.texture(bmp, true);
+  bmp.close();
+  imageCache.set(key, tex);
+  return tex;
+}
+
+function backgroundTexture(bg) {
+  const key = JSON.stringify(bg) + `@${sb.width}x${sb.height}`;
+  if (bgCache.has(key)) return bgCache.get(key);
+  const w = 512, h = Math.max(1, Math.round(512 * sb.height / sb.width));
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const g = c.getContext('2d');
+  if (Array.isArray(bg) && bg.length > 1) {
+    const grad = g.createLinearGradient(0, 0, w, h);
+    bg.forEach((col, i) => grad.addColorStop(i / (bg.length - 1), col));
+    g.fillStyle = grad;
+  } else {
+    g.fillStyle = Array.isArray(bg) ? (bg[0] || '#000') : bg;
+  }
+  g.fillRect(0, 0, w, h);
+  const tex = gpu.texture(c);
+  bgCache.set(key, tex);
+  return tex;
+}
+
+function wrapText(g, text, maxW) {
+  const out = [];
+  for (const para of String(text).split('\n')) {
+    let line = '';
+    for (const word of para.split(' ')) {
+      const test = line ? line + ' ' + word : word;
+      if (g.measureText(test).width <= maxW) { line = test; continue; }
+      if (line) out.push(line);
+      if (g.measureText(word).width <= maxW) { line = word; continue; }
+      line = '';
+      for (const ch of word) {
+        if (line && g.measureText(line + ch).width > maxW) { out.push(line); line = ch; }
+        else line += ch;
+      }
+    }
+    out.push(line);
+  }
+  return out;
+}
+
+function textTexture(text, kind) {
+  const W = sb.width, H = sb.height, unit = Math.min(W, H);
+  const isTitle = kind === 'title';
+  const size = Math.round(unit * (isTitle ? 0.075 : 0.042));
+  const font = `${isTitle ? 700 : 500} ${size}px ${FONT}`;
+  const c = document.createElement('canvas');
+  const g = c.getContext('2d');
+  g.font = font;
+  const lines = wrapText(g, text, W * (isTitle ? 0.82 : 0.8));
+  const lh = size * (isTitle ? 1.2 : 1.35);
+  const pad = Math.ceil(unit * 0.04);
+  const widest = Math.max(1, ...lines.map(l => g.measureText(l).width));
+  c.width = Math.ceil(Math.min(W, widest + pad * 2));
+  c.height = Math.ceil(lines.length * lh + pad * 2);
+  g.font = font;
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillStyle = '#fff';
+  g.shadowColor = 'rgba(0,0,0,.65)';
+  g.shadowBlur = unit * 0.02;
+  lines.forEach((l, i) => g.fillText(l, c.width / 2, pad + lh * (i + 0.5)));
+  const tex = gpu.texture(c);
+  tex.lineCenter = pad + lh * (lines.length - 0.5);
+  return tex;
+}
+
+async function buildSceneAssets() {
+  for (const a of sceneAssets) { gpu.release(a.title); gpu.release(a.caption); gpu.release(a.note); }
+  sceneAssets = [];
+  const missing = new Set();
+  for (const s of sb.scenes) {
+    const a = {};
+    if (s.image) {
+      const key = baseName(s.image);
+      a.image = await imageTexture(key);
+      if (!a.image) { missing.add(key); a.note = textTexture('이미지 없음: ' + key, 'caption'); }
+    }
+    if (!a.image) a.bg = backgroundTexture(s.image ? ['#15181f', '#1f2430'] : s.background);
+    if (s.title) a.title = textTexture(s.title, 'title');
+    if (s.caption) a.caption = textTexture(s.caption, 'caption');
+    sceneAssets.push(a);
+  }
+  return missing;
+}
+
+// ================= frame composition =================
+
+function kenBurnsUV(tex, s, u) {
+  const W = sb.width, H = sb.height, iw = tex.w, ih = tex.h, k = s.intensity;
+  let z = 1 + k, zoomT = 0;
+  if (s.motion === 'zoom-in') { z = 1 + k * u; zoomT = u; }
+  else if (s.motion === 'zoom-out') { z = 1 + k * (1 - u); zoomT = 1 - u; }
+  else if (s.motion === 'static') { z = 1; }
+
+  const scale = Math.max(W / iw, H / ih) * z;
+  const vw = W / scale, vh = H / scale;
+  const minX = vw / 2, maxX = iw - vw / 2, minY = vh / 2, maxY = ih - vh / 2;
+  let cx = iw / 2, cy = ih / 2;
+  if (s.focus && zoomT > 0) {
+    cx = lerp(cx, s.focus[0] * iw, zoomT);
+    cy = lerp(cy, s.focus[1] * ih, zoomT);
+  }
+  if (s.motion === 'pan-left') cx = lerp(maxX, minX, u);
+  if (s.motion === 'pan-right') cx = lerp(minX, maxX, u);
+  if (s.motion === 'pan-up') cy = lerp(maxY, minY, u);
+  if (s.motion === 'pan-down') cy = lerp(minY, maxY, u);
+  cx = clamp(cx, minX, maxX);
+  cy = clamp(cy, minY, maxY);
+  return [(cx - vw / 2) / iw, (cy - vh / 2) / ih, (cx + vw / 2) / iw, (cy + vh / 2) / ih];
+}
+
+function sceneAlpha(i, t) {
+  const sc = sb.scenes, st = timeline.starts;
+  let a = 1;
+  if (i > 0 && sc[i].transition > 0 && t < st[i] + sc[i].transition) {
+    const p = (t - st[i]) / sc[i].transition;
+    a *= sc[i].transitionType === 'fade-black' ? clamp(2 * p - 1) : easeInOut(p);
+  }
+  const next = sc[i + 1];
+  if (next && next.transitionType === 'fade-black' && next.transition > 0 && t >= st[i + 1]) {
+    a *= clamp(1 - 2 * (t - st[i + 1]) / next.transition);
+  }
+  return a;
+}
+
+function drawFrame(t) {
+  if (!sb) { gpu.blank(); return; }
+  const W = sb.width, H = sb.height, unit = Math.min(W, H);
+  const bar = sb.effects.letterbox ? letterboxBar(W, H) : 0;
+  const full = [0, 0, W, H];
+  gpu.begin();
+  for (let i = 0; i < sb.scenes.length; i++) {
+    const s = sb.scenes[i], st = timeline.starts[i];
+    if (t < st || t > st + s.duration) continue;
+    const a = sceneAlpha(i, t);
+    if (a <= 0) continue;
+    const asset = sceneAssets[i];
+    const local = t - st;
+    if (asset.image) gpu.draw(asset.image, full, kenBurnsUV(asset.image, s, clamp(local / s.duration)), a);
+    else gpu.draw(asset.bg, full, [0, 0, 1, 1], a);
+    if (asset.note) {
+      const n = asset.note;
+      gpu.draw(n, [(W - n.w) / 2, H * 0.05, (W + n.w) / 2, H * 0.05 + n.h], [0, 0, 1, 1], a * 0.6);
+    }
+    const fade = Math.min(easeOut((local - 0.25) / 0.6), easeOut((s.duration - local - 0.1) / 0.5));
+    if (fade > 0) {
+      if (asset.title) {
+        const tt = asset.title;
+        const y0 = (H - tt.h) / 2 + (1 - fade) * unit * 0.015;
+        gpu.draw(tt, [(W - tt.w) / 2, y0, (W + tt.w) / 2, y0 + tt.h], [0, 0, 1, 1], a * fade);
+      }
+      if (asset.caption) {
+        const ct = asset.caption;
+        const y0 = H - unit * 0.08 - bar - ct.lineCenter;
+        gpu.draw(ct, [(W - ct.w) / 2, y0, (W + ct.w) / 2, y0 + ct.h], [0, 0, 1, 1], a * fade);
+      }
+    }
+  }
+  const fadeIn = sb.fadeIn ? clamp(t / sb.fadeIn) : 1;
+  const fadeOut = sb.fadeOut ? clamp((timeline.total - t) / sb.fadeOut) : 1;
+  gpu.finish({
+    time: t, fade: Math.min(fadeIn, fadeOut), bar,
+    vignette: sb.effects.vignette, grain: sb.effects.grain, ...sb.look,
+  });
+}
+
+// ================= preview playback =================
+
+const audioEl = new Audio();
+audioEl.loop = true;
+let audioKey = null;
+
+async function setupPreviewAudio(force = false) {
+  const key = sb && sb.music ? baseName(sb.music) : null;
+  if (key === audioKey && !force) return;
+  audioKey = key;
+  if (audioEl.src) URL.revokeObjectURL(audioEl.src);
+  audioEl.removeAttribute('src');
+  audioEl.load();
+  const file = key ? await getAsset(key) : null;
+  if (file) audioEl.src = URL.createObjectURL(file);
+}
+
+function syncAudio(t) {
+  if (!audioEl.src) return;
+  const d = audioEl.duration;
+  audioEl.currentTime = Number.isFinite(d) && d > 0 ? t % d : t;
+  audioEl.play().catch(() => {});
+}
+
+function previewVolume(t) {
+  if (!audioEl.src) return;
+  const out = sb.fadeOut ? clamp((timeline.total - t) / Math.max(sb.fadeOut, 1.5)) : 1;
+  audioEl.volume = sb.musicVolume * out;
+}
+
+const now = () => playing ? playOffset + (performance.now() - playStart) / 1000 : playOffset;
+
+function play() {
+  if (!sb || rendering) return;
+  if (playOffset >= timeline.total) playOffset = 0;
+  playing = true;
+  playStart = performance.now();
+  syncAudio(playOffset);
+  $('play').textContent = '일시정지';
+  tick();
+}
+
+function pause() {
+  if (playing) playOffset = now();
+  playing = false;
+  cancelAnimationFrame(rafId);
+  audioEl.pause();
+  $('play').textContent = '재생';
+}
+
+function tick() {
+  let t = now();
+  const end = t >= timeline.total;
+  if (end) t = timeline.total;
+  drawFrame(t);
+  previewVolume(t);
+  updateTime(t);
+  if (end) {
+    playing = false;
+    playOffset = t;
+    audioEl.pause();
+    $('play').textContent = '재생';
+    return;
+  }
+  rafId = requestAnimationFrame(tick);
+}
+
+function seek(t) {
+  if (!sb) return;
+  playOffset = clamp(t, 0, timeline.total);
+  if (playing) { playStart = performance.now(); syncAudio(playOffset); }
+  drawFrame(playOffset);
+  updateTime(playOffset);
+}
+
+function updateTime(t) {
+  const total = timeline ? timeline.total : 0;
+  $('time').textContent = `${t.toFixed(1)} / ${total.toFixed(1)}s`;
+  if (!scrubbing && total) $('scrub').value = Math.round(t / total * 1000);
+}
+
+// ================= export: WebCodecs (GPU encode) =================
+
+async function loadMuxer() {
+  if (!muxerModule) muxerModule = import(MUXER_URL).catch(e => { muxerModule = null; throw e; });
+  return muxerModule;
+}
+
+function videoCandidates(width, height, fps) {
+  const big = height > 1440 || width > 2560;
+  const mid = height > 1080 || width > 1920;
+  const avc = big ? (fps > 30 ? 'avc1.640034' : 'avc1.640033') : mid ? 'avc1.640032' : fps > 30 ? 'avc1.64002A' : 'avc1.640028';
+  return {
+    h264: { codec: avc, mux: 'avc', extra: { avc: { format: 'avc' } }, label: 'H.264' },
+    hevc: { codec: big ? 'hvc1.1.6.L153.B0' : 'hvc1.1.6.L123.B0', mux: 'hevc', extra: { hevc: { format: 'hevc' } }, label: 'HEVC' },
+    av1: { codec: big ? 'av01.0.12M.08' : 'av01.0.08M.08', mux: 'av1', extra: {}, label: 'AV1' },
+  };
+}
+
+async function pickVideoConfig(preferred, width, height, fps, bitrate) {
+  const cands = videoCandidates(width, height, fps);
+  const order = [...new Set([preferred, 'h264'])].filter(k => cands[k]);
+  for (const hw of ['prefer-hardware', 'no-preference']) {
+    for (const key of order) {
+      const c = cands[key];
+      const config = {
+        codec: c.codec, width, height, bitrate, framerate: fps,
+        hardwareAcceleration: hw, latencyMode: 'quality', bitrateMode: 'variable', ...c.extra,
+      };
+      try {
+        const r = await VideoEncoder.isConfigSupported(config);
+        if (r.supported) return { config, mux: c.mux, label: c.label, hw: hw === 'prefer-hardware' };
+      } catch { /* try next */ }
+    }
+  }
+  return null;
+}
+
+async function pickAudioConfig() {
+  if (typeof AudioEncoder === 'undefined') return null;
+  for (const [codec, mux] of [['mp4a.40.2', 'aac'], ['opus', 'opus']]) {
+    const config = { codec, sampleRate: AUDIO_RATE, numberOfChannels: 2, bitrate: 192000 };
+    try {
+      if ((await AudioEncoder.isConfigSupported(config)).supported) return { config, mux };
+    } catch { /* try next */ }
+  }
+  return null;
+}
+
+async function mixAudio(file) {
+  const ac = new AudioContext();
+  let decoded;
+  try { decoded = await ac.decodeAudioData(await file.arrayBuffer()); }
+  finally { ac.close(); }
+  const total = timeline.total;
+  const off = new OfflineAudioContext(2, Math.ceil(total * AUDIO_RATE), AUDIO_RATE);
+  const src = off.createBufferSource();
+  src.buffer = decoded;
+  src.loop = true;
+  const gain = off.createGain();
+  const vol = sb.musicVolume;
+  gain.gain.setValueAtTime(vol, 0);
+  const fo = Math.max(sb.fadeOut, 1.5);
+  if (total > fo) {
+    gain.gain.setValueAtTime(vol, total - fo);
+    gain.gain.linearRampToValueAtTime(0, total);
+  }
+  src.connect(gain).connect(off.destination);
+  src.start(0);
+  return off.startRendering();
+}
+
+async function encodeAudio(buffer, audio, muxer) {
+  let err = null;
+  const enc = new AudioEncoder({ output: (c, m) => muxer.addAudioChunk(c, m), error: e => { err = e; } });
+  enc.configure(audio.config);
+  const L = buffer.getChannelData(0);
+  const R = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : L;
+  const block = AUDIO_RATE;
+  for (let i = 0; i < buffer.length && !err; i += block) {
+    const n = Math.min(block, buffer.length - i);
+    const data = new Float32Array(n * 2);
+    data.set(L.subarray(i, i + n), 0);
+    data.set(R.subarray(i, i + n), n);
+    const ad = new AudioData({
+      format: 'f32-planar', sampleRate: AUDIO_RATE, numberOfFrames: n, numberOfChannels: 2,
+      timestamp: Math.round(i / AUDIO_RATE * 1e6), data,
+    });
+    enc.encode(ad);
+    ad.close();
+  }
+  await enc.flush();
+  enc.close();
+  if (err) throw err;
+}
+
+function waitForEncoder(enc) {
+  return Promise.race([
+    new Promise(res => enc.addEventListener('dequeue', res, { once: true })),
+    sleep(50),
+  ]);
+}
+
+async function encodeVideo(video, muxer, onProgress) {
+  let err = null;
+  const enc = new VideoEncoder({ output: (c, m) => muxer.addVideoChunk(c, m), error: e => { err = e; } });
+  enc.configure(video.config);
+  const fps = sb.fps;
+  const frames = Math.max(1, Math.round(timeline.total * fps));
+  const dur = 1e6 / fps;
+  const gop = fps * 2;
+  for (let f = 0; f < frames; f++) {
+    if (rendering.cancelled || err) break;
+    drawFrame(f / fps);
+    const frame = new VideoFrame(canvas, { timestamp: Math.round(f * dur), duration: Math.round(dur) });
+    enc.encode(frame, { keyFrame: f % gop === 0 });
+    frame.close();
+    while (enc.encodeQueueSize > 8 && !err && !rendering.cancelled) await waitForEncoder(enc);
+    if (f % 8 === 0) { onProgress(f, frames); await yieldTask(); }
+  }
+  if (err) { enc.close(); throw err; }
+  if (!rendering.cancelled) await enc.flush();
+  enc.close();
+  onProgress(frames, frames);
+}
+
+async function openOutput(name) {
+  if (rootHandle && await ensurePermission(rootHandle, true)) {
+    const dir = await rootHandle.getDirectoryHandle('renders', { create: true });
+    const fh = await dir.getFileHandle(name, { create: true });
+    return { writable: await fh.createWritable(), label: `${rootHandle.name}/renders/${name}` };
+  }
+  if (window.showSaveFilePicker) {
+    const fh = await window.showSaveFilePicker({
+      suggestedName: name, id: 'cursor-video-out',
+      types: [{ description: 'MP4 video', accept: { 'video/mp4': ['.mp4'] } }],
+    });
+    return { writable: await fh.createWritable(), label: fh.name };
+  }
+  return { writable: null, label: name };
+}
+
+function download(blob, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+}
+
+async function exportVideo() {
+  if (!sb || rendering) return;
+  pause();
+  const name = `${slug(sb.title)}.mp4`;
+  const webcodecs = typeof VideoEncoder !== 'undefined' && typeof VideoFrame !== 'undefined';
+
+  let out = { writable: null, label: name };
+  if (webcodecs) {
+    try { out = await openOutput(name); }
+    catch (e) {
+      if (e.name === 'AbortError') return;
+      setStatus('저장 위치를 열 수 없습니다: ' + e.message, true);
+      return;
+    }
+  }
+
+  rendering = { cancelled: false };
+  setControls();
+  $('renderBar').hidden = false;
+  const started = performance.now();
+  const progress = (frac, text) => {
+    $('progress').style.width = (clamp(frac) * 100).toFixed(1) + '%';
+    $('renderStatus').textContent = text;
+  };
+
+  try {
+    let mp4 = null, video = null;
+    if (webcodecs) {
+      progress(0, '인코더 준비 중…');
+      try { mp4 = await loadMuxer(); } catch { mp4 = null; }
+      video = mp4 && await pickVideoConfig($('codecSelect').value, sb.width, sb.height, sb.fps, sb.bitrate);
+    }
+    if (!mp4 || !video) {
+      if (out.writable) await out.writable.abort();
+      await exportRealtime(progress, !webcodecs ? 'WebCodecs 미지원' : !mp4 ? 'MP4 모듈을 불러오지 못함(인터넷 연결 확인)' : '인코더 없음');
+      return;
+    }
+
+    let audio = null, audioBuffer = null, audioNote = '';
+    const musicFile = sb.music ? await getAsset(baseName(sb.music)) : null;
+    if (sb.music && !musicFile) audioNote = ' · 음악 파일 없음';
+    if (musicFile) {
+      progress(0, '오디오 믹싱 중…');
+      audio = await pickAudioConfig();
+      if (audio) audioBuffer = await mixAudio(musicFile);
+      else audioNote = ' · 오디오 인코더 미지원(무음)';
+    }
+
+    const target = out.writable ? new mp4.FileSystemWritableFileStreamTarget(out.writable) : new mp4.ArrayBufferTarget();
+    const muxer = new mp4.Muxer({
+      target,
+      video: { codec: video.mux, width: sb.width, height: sb.height, frameRate: sb.fps },
+      ...(audio ? { audio: { codec: audio.mux, numberOfChannels: 2, sampleRate: AUDIO_RATE } } : {}),
+      fastStart: out.writable ? false : 'in-memory',
+      firstTimestampBehavior: 'offset',
+    });
+
+    if (audio) await encodeAudio(audioBuffer, audio, muxer);
+
+    const engine = `${video.label} ${video.hw ? 'GPU 하드웨어' : '소프트웨어'} 인코딩`;
+    await encodeVideo(video, muxer, (f, total) => {
+      const sec = (performance.now() - started) / 1000;
+      const speed = (f / sb.fps) / Math.max(sec, 0.001);
+      progress(f / total, `${engine} · ${f}/${total} 프레임 · ${(f / Math.max(sec, 0.001)).toFixed(0)} fps · 실시간 대비 ${speed.toFixed(1)}배`);
+    });
+
+    if (rendering.cancelled) {
+      if (out.writable) await out.writable.abort();
+      setStatus('렌더링을 취소했습니다.');
+      return;
+    }
+
+    muxer.finalize();
+    if (out.writable) await out.writable.close();
+    else download(new Blob([target.buffer], { type: 'video/mp4' }), name);
+
+    const sec = (performance.now() - started) / 1000;
+    setStatus(`완료: ${out.label}\n${engine} · ${sb.width}×${sb.height} ${sb.fps}fps · ${timeline.total.toFixed(1)}초 영상을 ${sec.toFixed(1)}초에 처리${audioNote}`);
+  } catch (e) {
+    if (out.writable) { try { await out.writable.abort(); } catch { /* already closed */ } }
+    setStatus('내보내기 실패: ' + (e && e.message || e), true);
+  } finally {
+    rendering = null;
+    $('renderBar').hidden = true;
+    $('progress').style.width = '0';
+    setControls();
+    seek(playOffset);
+  }
+}
+
+async function exportRealtime(progress, reason) {
+  const stream = canvas.captureStream(sb.fps);
+  const mime = ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm']
+    .find(m => MediaRecorder.isTypeSupported(m)) || '';
+  const rec = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: sb.bitrate } : { videoBitsPerSecond: sb.bitrate });
+  const chunks = [];
+  rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+  const stopped = new Promise(res => { rec.onstop = res; });
+  rec.start(1000);
+  const t0 = performance.now();
+  await new Promise(res => {
+    const step = () => {
+      if (rendering.cancelled) return res();
+      const t = Math.min((performance.now() - t0) / 1000, timeline.total);
+      drawFrame(t);
+      progress(t / timeline.total, `실시간 녹화 모드(${reason}) · ${t.toFixed(1)} / ${timeline.total.toFixed(1)}초 · 탭을 앞에 두세요`);
+      if (t >= timeline.total) return setTimeout(res, 200);
+      requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  });
+  rec.stop();
+  await stopped;
+  stream.getTracks().forEach(tr => tr.stop());
+  if (rendering.cancelled) { setStatus('렌더링을 취소했습니다.'); return; }
+  const type = rec.mimeType || 'video/webm';
+  const name = `${slug(sb.title)}.${type.includes('mp4') ? 'mp4' : 'webm'}`;
+  download(new Blob(chunks, { type }), name);
+  setStatus(`완료(실시간 녹화, 무음): ${name} · 다운로드 폴더를 확인하세요.`);
+}
+
+// ================= workspace folder =================
+
+function idb() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open('cursor-video-studio', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('kv');
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+async function kvGet(key) {
+  const db = await idb();
+  return new Promise((res, rej) => {
+    const q = db.transaction('kv').objectStore('kv').get(key);
+    q.onsuccess = () => res(q.result);
+    q.onerror = () => rej(q.error);
+  });
+}
+async function kvSet(key, value) {
+  const db = await idb();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('kv', 'readwrite');
+    tx.objectStore('kv').put(value, key);
+    tx.oncomplete = () => res();
+    tx.onerror = () => rej(tx.error);
+  });
+}
+
+async function ensurePermission(handle, request) {
+  const opts = { mode: 'readwrite' };
+  if (await handle.queryPermission(opts) === 'granted') return true;
+  return request && await handle.requestPermission(opts) === 'granted';
+}
+
+async function connectFolder() {
+  if (!window.showDirectoryPicker) {
+    setStatus('이 브라우저는 폴더 연결을 지원하지 않습니다. 파일을 끌어다 놓으세요.', true);
+    return;
+  }
+  if (rootHandle && !(await ensurePermission(rootHandle, false))) {
+    if (await ensurePermission(rootHandle, true)) { await scanFolder(); return; }
+  }
+  try {
+    rootHandle = await window.showDirectoryPicker({ id: 'cursor-video-root', mode: 'readwrite' });
+  } catch (e) {
+    if (e.name !== 'AbortError') setStatus('폴더를 열 수 없습니다: ' + e.message, true);
+    return;
+  }
+  try { await kvSet('root', rootHandle); } catch { /* persistence is optional */ }
+  await scanFolder();
+}
+
+async function scanFolder(keepSelection = false) {
+  if (!rootHandle) return;
+  $('connect').textContent = `연결됨: ${rootHandle.name}`;
+  $('rescan').disabled = false;
+  setStatus('폴더를 읽는 중…');
+  diskAssets.clear();
+  const found = [];
+  const walk = async (dir, path, depth) => {
+    for await (const [name, h] of dir.entries()) {
+      if (h.kind === 'directory') {
+        if (depth < 4 && !name.startsWith('.') && !SKIP_DIRS.has(name)) await walk(h, `${path}${name}/`, depth + 1);
+      } else if (name.toLowerCase() === 'storyboard.json') {
+        const f = await h.getFile();
+        found.push({ label: path.replace(/\/$/, '') || rootHandle.name, handle: h, modified: f.lastModified });
+      } else if (IMAGE_RE.test(name) || AUDIO_RE.test(name)) {
+        const key = name.toLowerCase();
+        if (!diskAssets.has(key)) diskAssets.set(key, h);
+      }
+    }
+  };
+  try { await walk(rootHandle, '', 0); }
+  catch (e) { setStatus('폴더를 읽지 못했습니다: ' + e.message, true); return; }
+
+  found.sort((a, b) => b.modified - a.modified);
+  const previous = keepSelection && currentProject ? currentProject.label : null;
+  projects = found;
+  const sel = $('projectSelect');
+  sel.innerHTML = '';
+  if (!projects.length) {
+    sel.append(new Option('storyboard.json이 없습니다', ''));
+    sel.disabled = true;
+    setStatus(`이미지·음악 ${diskAssets.size}개를 찾았습니다. storyboard.json은 없습니다.`);
+    return;
+  }
+  projects.forEach((p, i) => sel.append(new Option(p.label, String(i))));
+  sel.disabled = false;
+  const idx = Math.max(0, previous ? projects.findIndex(p => p.label === previous) : 0);
+  sel.value = String(idx);
+  imageCache.forEach(t => gpu.release(t));
+  imageCache.clear();
+  await loadProject(idx);
+}
+
+async function loadProject(idx) {
+  const p = projects[idx];
+  if (!p) return;
+  currentProject = p;
+  try {
+    const raw = JSON.parse(await (await p.handle.getFile()).text());
+    $('editor').value = JSON.stringify(raw, null, 2);
+  } catch (e) {
+    setStatus(`${p.label}/storyboard.json 오류: ${e.message}`, true);
+    return;
+  }
+  $('save').disabled = false;
+  await applyEditor();
+}
+
+async function saveEditor() {
+  if (!currentProject) return;
+  try {
+    JSON.parse($('editor').value);
+    if (!(await ensurePermission(currentProject.handle, true))) throw new Error('쓰기 권한이 없습니다.');
+    const w = await currentProject.handle.createWritable();
+    await w.write($('editor').value);
+    await w.close();
+    setStatus(`저장됨: ${currentProject.label}/storyboard.json`);
+    await applyEditor();
+  } catch (e) {
+    setStatus('저장 실패: ' + e.message, true);
+  }
+}
+
+// ================= loading & UI =================
+
+async function filesFromDrop(dt) {
+  const entries = [...dt.items].map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+  if (!entries.length) return [...dt.files];
+  const out = [];
+  const walk = async entry => {
+    if (entry.isFile) {
+      out.push(await new Promise((res, rej) => entry.file(res, rej)));
+    } else if (entry.isDirectory) {
+      const reader = entry.createReader();
+      let batch;
+      do {
+        batch = await new Promise((res, rej) => reader.readEntries(res, rej));
+        for (const child of batch) await walk(child);
+      } while (batch.length);
+    }
+  };
+  for (const e of entries) await walk(e);
+  return out;
+}
+
+async function addFiles(list) {
+  let json = null;
+  for (const f of list) {
+    const key = baseName(f.name);
+    if (/\.json$/i.test(f.name)) {
+      if (!json || key === 'storyboard.json') json = f;
+    } else if (f.type.startsWith('image/') || IMAGE_RE.test(f.name) || f.type.startsWith('audio/') || AUDIO_RE.test(f.name)) {
+      droppedFiles.set(key, f);
+      if (imageCache.has(key)) { gpu.release(imageCache.get(key)); imageCache.delete(key); }
+      if (thumbUrls.has(key)) { URL.revokeObjectURL(thumbUrls.get(key)); thumbUrls.delete(key); }
+      if (key === audioKey) audioKey = null;
+    }
+  }
+  if (json) {
+    try {
+      $('editor').value = JSON.stringify(JSON.parse(await json.text()), null, 2);
+      currentProject = null;
+      $('save').disabled = true;
+    } catch (e) {
+      setStatus(`${json.name} JSON 오류: ${e.message}`, true);
+      return;
+    }
+  }
+  await applyEditor();
+}
+
+async function applyEditor() {
+  const txt = $('editor').value.trim();
+  if (!txt) { setStatus(`파일 ${droppedFiles.size}개 로드됨. storyboard.json을 넣으세요.`); return; }
+  let raw;
+  try { raw = JSON.parse(txt); } catch (e) { setStatus('JSON 오류: ' + e.message, true); return; }
+  try { sb = normalize(raw, $('resSelect').value); } catch (e) { setStatus(e.message, true); return; }
+  timeline = buildTimeline(sb);
+  gpu.resize(sb.width, sb.height);
+  await document.fonts.ready;
+  const missing = await buildSceneAssets();
+  await setupPreviewAudio();
+  pause();
+  seek(0);
+  updateSceneList();
+  setControls();
+
+  const lines = [`${sb.width}×${sb.height} · ${sb.fps}fps · ${timeline.total.toFixed(1)}초 · 장면 ${sb.scenes.length}개 · ${(sb.bitrate / 1e6).toFixed(0)}Mbps`];
+  if (missing.size) lines.push(`없는 이미지: ${[...missing].join(', ')}\n→ 작업 폴더를 연결하거나 이미지 파일을 끌어다 놓으세요.`);
+  if (sb.music && !audioEl.src) lines.push('없는 음악: ' + baseName(sb.music));
+  setStatus(lines.join('\n'), missing.size > 0);
+}
+
+let listToken = 0;
+
+async function updateSceneList() {
+  const token = ++listToken;
+  const ul = $('sceneList');
+  ul.innerHTML = '';
+  if (!sb) return;
+  for (const [i, s] of sb.scenes.entries()) {
+    const key = s.image ? baseName(s.image) : null;
+    const loaded = !!(sceneAssets[i] && sceneAssets[i].image);
+    const li = document.createElement('li');
+    const thumb = document.createElement('div');
+    thumb.className = 'thumb';
+    if (loaded) {
+      if (!thumbUrls.has(key)) {
+        const f = await getAsset(key);
+        if (token !== listToken) return;
+        if (f && !thumbUrls.has(key)) thumbUrls.set(key, URL.createObjectURL(f));
+      }
+      if (thumbUrls.has(key)) thumb.style.backgroundImage = `url("${thumbUrls.get(key)}")`;
+    } else if (!s.image) {
+      thumb.style.background = Array.isArray(s.background) ? `linear-gradient(135deg, ${s.background.join(', ')})` : s.background;
+    }
+    const info = document.createElement('div');
+    info.style.minWidth = '0';
+    const name = document.createElement('div');
+    name.className = 'clip';
+    name.textContent = `${i + 1}. ${s.title || s.caption || key || '배경'}`;
+    const meta = document.createElement('div');
+    meta.className = 'sub';
+    meta.textContent = `${s.duration}s · ${s.motion} · ${i ? s.transitionType : '시작'}${s.image && !loaded ? ' · 이미지 없음' : ''}`;
+    if (s.image && !loaded) meta.classList.add('warn');
+    info.append(name, meta);
+    li.append(thumb, info);
+    li.onclick = () => { pause(); seek(timeline.starts[i] + Math.min(1, s.duration / 2)); };
+    ul.append(li);
+  }
+}
+
+function setControls() {
+  const busy = !!rendering;
+  const ready = !!sb && !busy;
+  for (const id of ['play', 'scrub', 'render']) $(id).disabled = !ready;
+  for (const id of ['connect', 'demo', 'reset', 'apply', 'resSelect', 'codecSelect']) $(id).disabled = busy;
+  $('rescan').disabled = busy || !rootHandle;
+  $('projectSelect').disabled = busy || !projects.length;
+  $('save').disabled = busy || !currentProject;
+  $('drop').style.pointerEvents = busy ? 'none' : '';
+}
+
+function resetAll() {
+  pause();
+  droppedFiles.clear();
+  imageCache.forEach(t => gpu.release(t));
+  imageCache.clear();
+  bgCache.forEach(t => gpu.release(t));
+  bgCache.clear();
+  for (const a of sceneAssets) { gpu.release(a.title); gpu.release(a.caption); gpu.release(a.note); }
+  sceneAssets = [];
+  thumbUrls.forEach(u => URL.revokeObjectURL(u));
+  thumbUrls.clear();
+  sb = null; timeline = null; playOffset = 0; currentProject = null;
+  audioKey = '__reset__';
+  setupPreviewAudio();
+  $('editor').value = '';
+  $('sceneList').innerHTML = '';
+  $('time').textContent = '0.0 / 0.0s';
+  $('scrub').value = 0;
+  gpu.blank();
+  setControls();
+  setStatus('작업 폴더를 연결하거나 스토리보드를 넣으세요.');
+}
+
+async function probeEncoder() {
+  if (typeof VideoEncoder === 'undefined') {
+    $('encInfo').innerHTML = '<span class="warn">WebCodecs 없음 · 실시간 녹화 모드</span>';
+    return;
+  }
+  const hw = await pickVideoConfig('h264', 1920, 1080, 30, 14e6);
+  const ok = hw && hw.hw;
+  $('encInfo').innerHTML = ok
+    ? '<span class="ok">하드웨어 인코더 사용 가능</span>'
+    : '<span class="warn">하드웨어 인코더 없음 · 소프트웨어로 인코딩</span>';
+}
+
+// ================= wiring =================
+
+const drop = $('drop');
+drop.addEventListener('click', () => $('fileInput').click());
+['dragenter', 'dragover'].forEach(ev => document.addEventListener(ev, e => {
+  e.preventDefault();
+  drop.classList.add('over');
+}));
+document.addEventListener('dragleave', e => { if (!e.relatedTarget) drop.classList.remove('over'); });
+document.addEventListener('drop', async e => {
+  e.preventDefault();
+  drop.classList.remove('over');
+  if (rendering) return;
+  addFiles(await filesFromDrop(e.dataTransfer));
+});
+$('fileInput').addEventListener('change', e => { addFiles([...e.target.files]); e.target.value = ''; });
+
+$('connect').onclick = connectFolder;
+$('rescan').onclick = () => scanFolder(true);
+$('projectSelect').onchange = e => loadProject(Number(e.target.value));
+$('demo').onclick = () => {
+  currentProject = null;
+  $('editor').value = JSON.stringify(DEMO, null, 2);
+  applyEditor();
+};
+$('reset').onclick = resetAll;
+$('apply').onclick = applyEditor;
+$('save').onclick = saveEditor;
+$('play').onclick = () => (playing ? pause() : play());
+$('render').onclick = exportVideo;
+$('cancel').onclick = () => { if (rendering) rendering.cancelled = true; };
+
+for (const id of ['resSelect', 'codecSelect']) {
+  const el = $(id);
+  const stored = localStorage.getItem('cvs-' + id);
+  if (stored !== null && [...el.options].some(o => o.value === stored)) el.value = stored;
+  el.addEventListener('change', () => {
+    localStorage.setItem('cvs-' + id, el.value);
+    if (id === 'resSelect' && sb) applyEditor();
+  });
+}
+
+const scrub = $('scrub');
+scrub.addEventListener('pointerdown', () => { scrubbing = true; });
+scrub.addEventListener('pointerup', () => { scrubbing = false; });
+scrub.addEventListener('input', () => seek(scrub.value / 1000 * timeline.total));
+
+document.addEventListener('keydown', e => {
+  const inEditor = e.target.tagName === 'TEXTAREA';
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveEditor(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); if (inEditor) applyEditor().then(exportVideo); else exportVideo(); return; }
+  if (e.code === 'Space' && !inEditor && sb && !rendering && e.target.tagName !== 'SELECT') {
+    e.preventDefault();
+    playing ? pause() : play();
+  }
+});
+
+// ================= boot =================
+
+try {
+  gpu = new GPU(canvas);
+  $('gpuInfo').textContent = 'GPU: ' + gpu.name;
+} catch (e) {
+  $('gpuInfo').innerHTML = '<span class="warn"></span>';
+  $('gpuInfo').firstChild.textContent = e.message;
+  setStatus(e.message, true);
+  throw e;
+}
+gpu.resize(1920, 1080);
+gpu.blank();
+setControls();
+probeEncoder();
+
+try {
+  const saved = await kvGet('root');
+  if (saved) {
+    rootHandle = saved;
+    if (await ensurePermission(saved, false)) await scanFolder();
+    else {
+      $('connect').textContent = `다시 연결: ${saved.name}`;
+      setStatus('저장된 작업 폴더가 있습니다. "다시 연결"을 누르세요.');
+    }
+  }
+} catch { /* no saved folder */ }
+setControls();
+</script>
+</body>
+</html>
