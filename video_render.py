@@ -28,7 +28,7 @@ ASPECTS = {'16:9': (16, 9), '9:16': (9, 16), '1:1': (1, 1), '4:3': (4, 3), '3:4'
 QUALITY = {'720p': 720, '1080p': 1080, '1440p': 1440, '4k': 2160}
 MOTIONS = ['zoom-in', 'zoom-out', 'pan-left', 'pan-right', 'pan-up', 'pan-down', 'static']
 TRANSITIONS = ['crossfade', 'fade-black', 'cut']
-SKIP_DIRS = {'node_modules', 'renders'}
+SKIP_DIRS = {'node_modules', 'renders', 'tmp'}
 NAMED_COLORS = {'black': (0, 0, 0), 'white': (255, 255, 255), 'red': (255, 0, 0), 'green': (0, 128, 0),
                 'blue': (0, 0, 255), 'gray': (128, 128, 128), 'grey': (128, 128, 128), 'navy': (0, 0, 128),
                 'orange': (255, 165, 0), 'purple': (128, 0, 128), 'yellow': (255, 255, 0)}

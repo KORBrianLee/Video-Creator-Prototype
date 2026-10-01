@@ -47,6 +47,9 @@ def save(cfg):
 def temp_dir(cfg):
     p = Path(cfg['storage_dir']) / 'tmp'
     p.mkdir(parents=True, exist_ok=True)
+    # ffmpeg and other child processes inherit these, so scratch files stay off the system drive too.
+    for var in ('TEMP', 'TMP', 'TMPDIR'):
+        os.environ[var] = str(p)
     return str(p)
 
 

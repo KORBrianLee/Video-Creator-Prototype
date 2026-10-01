@@ -39,14 +39,17 @@ def run(cmd, what):
 
 def prepare_images(ffmpeg, images, tmp, W, H):
     """Scale and crop every keyframe once to the output size (lossless PNG)."""
-    outs = []
     vf = f'scale={W}:{H}:force_original_aspect_ratio=increase:flags=lanczos,crop={W}:{H},setsar=1'
-    for i, p in enumerate(images, start=1):
+
+    def one(item):
+        i, p = item
         out = tmp / f'k{i:04d}.png'
-        outs.append(out)
-        run([ffmpeg, '-hide_banner', '-loglevel', 'error', '-y', '-i', str(p), '-vf', vf, '-frames:v', '1', str(out)],
-            f'preparing {p.name}')
-    return outs
+        run([ffmpeg, '-hide_banner', '-loglevel', 'error', '-y', '-i', str(p), '-vf', vf, '-frames:v', '1',
+             '-compression_level', '1', str(out)], f'preparing {p.name}')
+        return out
+
+    with ThreadPoolExecutor(max_workers=min(len(images), os.cpu_count() or 4)) as ex:
+        return list(ex.map(one, enumerate(images, start=1)))
 
 
 def post_filters(board, total, first, last, span):
@@ -78,7 +81,7 @@ def render_mci(ffmpeg, pngs, tmp, board, seconds, out_path, encoder):
                        f"file '{b}'\nduration {pad}\nfile '{b}'\nduration {pad}\n", encoding='utf-8')
         last = i == pairs - 1
         frames = n + 1 if last else n
-        chain = ['format=yuv420p', f'minterpolate=fps={fps}:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1',
+        chain = ['format=yuv420p', f'minterpolate=fps={fps}:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1:search_param=16',
                  f'trim=start={pad},setpts=PTS-STARTPTS']
         chain += post_filters(board, 0, i == 0, last, frames / fps)
         out = tmp / f'seg{i}.mkv'
@@ -110,7 +113,10 @@ def render_gpu(ffmpeg, pngs, tmp, board, seconds, out_path, encoder, hw):
         args += ['-init_hw_device', 'opencl=ocl', '-filter_hw_device', 'ocl']
     graph = []
     for i, p in enumerate(pngs):
-        args += ['-loop', '1', '-framerate', str(fps), '-t', f'{total + seconds:.3f}', '-i', str(p)]
+        # Each keyframe is only visible during the fade in and the fade out around it, so its input
+        # only needs two gaps of frames; looping it for the whole video would re-decode it every frame.
+        span = seconds if i == 0 or i == pairs else 2 * seconds
+        args += ['-loop', '1', '-framerate', str(fps), '-t', f'{span + 2 / fps:.4f}', '-i', str(p)]
         graph.append(f'[{i}:v]format={"nv12,hwupload" if hw else "yuv420p"}[v{i}]')
     cur = 'v0'
     xf = 'xfade_opencl' if hw else 'xfade'
