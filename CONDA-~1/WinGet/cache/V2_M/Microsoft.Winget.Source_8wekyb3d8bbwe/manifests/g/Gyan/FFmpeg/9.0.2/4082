@@ -1,0 +1,165 @@
+Author: Gyan Doshi
+Copyright: Copyright (c) 2000-2026 the FFmpeg developers
+Description: 'FFmpeg is the leading multimedia framework, able to decode, encode,
+  transcode, mux, demux, stream, filter and play pretty much anything that humans
+  and machines have created. It supports the most obscure ancient formats up to the
+  cutting edge.
+
+
+  FFmpeg 64-bit static full build from www.gyan.dev. Contains most libraries.'
+Documentations:
+- DocumentLabel: Documentation
+  DocumentUrl: https://ffmpeg.org/documentation.html
+- DocumentLabel: About
+  DocumentUrl: https://www.gyan.dev/ffmpeg/builds/#about-these-builds
+- DocumentLabel: GitHub Issues
+  DocumentUrl: https://github.com/GyanD/codexffmpeg/issues
+InstallerType: zip
+Installers:
+- Architecture: x64
+  InstallerSha256: 759D0A9831C436A0EB331AD36F236C06CB04AAA0005DA46571F0E9D3D9206F6B
+  InstallerUrl: https://github.com/GyanD/codexffmpeg/releases/download/9.0.2/ffmpeg-9.0.2-full_build.zip
+License: GPL-3.0
+LicenseUrl: https://www.ffmpeg.org/legal.html
+Localization:
+- Author: Gyan Doshi
+  Copyright: Copyright (c) 2000-2026 the FFmpeg developers
+  Description: "FFmpeg \u662F\u9886\u5148\u7684\u591A\u5A92\u4F53\u6846\u67B6\uFF0C\u80FD\u591F\u89E3\u7801\u3001\u7F16\u7801\u3001\u8F6C\u7801\u3001\u590D\u7528\u3001\u89E3\u590D\u7528\u3001\u6D41\u5F0F\u4F20\u8F93\u3001\u8FC7\u6EE4\u548C\u64AD\u653E\u4EBA\u7C7B\u548C\u673A\u5668\u521B\u5EFA\u7684\u51E0\u4E4E\u6240\u6709\u5185\u5BB9\u3002\u5B83\u652F\u6301\u4ECE\u6700\u6666\u6DA9\u7684\u53E4\u8001\u683C\u5F0F\u5230\u6700\u524D\u6CBF\u7684\u683C\u5F0F\u3002\n\nFFmpeg
+    64 \u4F4D\u9759\u6001\u5B8C\u6574\u7248\u672C\u6765\u81EA www.gyan.dev\u3002\u5305\u542B\u5927\u591A\u6570\u5E93\u3002"
+  Documentations:
+  - DocumentLabel: "\u6587\u6863"
+    DocumentUrl: https://ffmpeg.org/documentation.html
+  - DocumentLabel: "\u5173\u4E8E"
+    DocumentUrl: https://www.gyan.dev/ffmpeg/builds/#about-these-builds
+  - DocumentLabel: "GitHub \u95EE\u9898"
+    DocumentUrl: https://github.com/GyanD/codexffmpeg/issues
+  License: GPL-3.0
+  LicenseUrl: https://www.ffmpeg.org/legal.html
+  PackageLocale: zh-CN
+  PackageName: FFmpeg
+  PackageUrl: https://www.gyan.dev/ffmpeg/builds/
+  Publisher: Gyan
+  PublisherSupportUrl: https://www.gyan.dev/ffmpeg/builds/#discussion
+  PublisherUrl: https://www.gyan.dev/
+  ReleaseNotesUrl: https://raw.githubusercontent.com/FFmpeg/FFmpeg/release/9.0/Changelog
+  ShortDescription: "\u7528\u4E8E\u5F55\u5236\u3001\u8F6C\u6362\u548C\u4F20\u8F93\u97F3\u9891\u548C\u89C6\u9891\u7684\u5B8C\u6574\u8DE8\u5E73\u53F0\u89E3\u51B3\u65B9\u6848\u3002"
+  Tags:
+  - ffmpeg
+  - "\u591A\u5A92\u4F53"
+  - "\u5A92\u4F53"
+  - "\u5F55\u5236"
+  - "\u63A8\u6D41"
+  - "\u6D41\u5A92\u4F53"
+  - "\u89C6\u9891"
+  - "\u7F16\u7801"
+  - "\u7F16\u89E3\u7801\u5668"
+  - "\u89E3\u7801"
+  - "\u8F6C\u6362"
+  - "\u8F6C\u7801"
+  - "\u8FC7\u6EE4\u5668"
+  - "\u97F3\u89C6\u9891"
+  - "\u97F3\u9891"
+ManifestType: merged
+ManifestVersion: 1.12.0
+Moniker: ffmpeg
+NestedInstallerFiles:
+- PortableCommandAlias: ffmpeg
+  RelativeFilePath: ffmpeg-9.0.2-full_build\bin\ffmpeg.exe
+- PortableCommandAlias: ffplay
+  RelativeFilePath: ffmpeg-9.0.2-full_build\bin\ffplay.exe
+- PortableCommandAlias: ffprobe
+  RelativeFilePath: ffmpeg-9.0.2-full_build\bin\ffprobe.exe
+NestedInstallerType: portable
+PackageIdentifier: Gyan.FFmpeg
+PackageLocale: en-US
+PackageName: FFmpeg
+PackageUrl: https://www.gyan.dev/ffmpeg/builds/
+PackageVersion: 9.0.2
+Publisher: Gyan
+PublisherSupportUrl: https://www.gyan.dev/ffmpeg/builds/#discussion
+PublisherUrl: https://www.gyan.dev/
+ReleaseDate: 2026-09-20
+ReleaseNotes: "Update for 9.0.2\n avcodec/ppc/vp8dsp: store the 16 pixel wide rows
+  at any alignment\n avfilter/vf_decimate: reject blocks smaller than one chroma sample\n
+  avformat/genh: check for unsupported interleaved size 1 typ1 THP\n lavc/vvc: Prevent
+  OOB write in sh_entry_points\n avcodec/vulkan_hevc: bound the per category reference
+  counts in vk_hevc_start_frame\n avcodec/vulkan_hevc: bound the reference count in
+  vk_hevc_start_frame\n avformat/pdvenc: add the AVClass pointer to PDVMuxContext\n
+  avcodec/fflcms2: fix memory leak after cmsDeleteContext(NULL)\n avcodec/cbs_h266_syntax_template:
+  fix ph_recovery_poc_cnt range\n avformat/http: free cookie parameters on parse failure\n
+  avutil/opt: fix av_opt_is_set_to_default() on default-NAN options\n fftools: reject
+  negative -t durations\n avcodec/hevc: don't error out on remaining slices of a skipped
+  picture\n avcodec/vvc: Skip over the current picture in find_ref_idx\n avcodec/mips/vc1dsp_msa:
+  Fix mspel functions\n avcodec/mips/hevcpred_msa: Fix compilation\n avcodec/vc1_block:
+  don't drop the last macroblock when 1 bit remains\n avcodec/dovi_rpudec: strip zero
+  padding\n avformat/dashdec: check fragment_timescale before division in refresh_manifest\n
+  avutil/encryption_info: reject init info with zero-sized key IDs\n avformat/genh:
+  check thp extradata read and allocation\n avformat/oggdec: check for integer overflow
+  in buf_realloc\n vulkan_av1: fix out-of-bounds write of tile_sizes\n avcodec/cfhd:
+  reject header tags after the frame buffer was allocated\n avcodec/cfhd: check the
+  channel number after every tag\n avcodec/cfhd: reset the allocated band sizes when
+  freeing the buffers\n avcodec/cook: require the channel mask to cover every subpacket
+  channel\n avcodec/dvdsubenc: account for the byte alignment of each RLE line\n avfilter/vf_colorconstancy:
+  free only allocated buffers on setup failure\n avcodec/hap: do not hide the failure
+  of the chunk table allocation\n avformat/mov: Allocate the array without clearing
+  before read\n avformat/mov: do not zero a key string before reading it\n avformat/mov:
+  bound the keys atom entry count by the atom size\n avcodec/vvc/dec: compare the
+  CTU area in ibc_tl_init()\n avcodec/vvc/dec: free the tabs when pic_arrays_init()
+  fails\n avcodec/vvc/thread: clear fc->ft when the frame thread is freed\n avfilter/vf_uspp:
+  Fix qpcount\n avcodec/codec_internal: clarify docs for FF_CODEC_CAP_SKIP_FRAME_FILL_PARAM\n
+  avfilter/f_metadata: avoid overread on long formatted output\n avformat/tls_mbedtls:
+  set the expected hostname for numeric hosts\n libswscale/ppc/yuv2rgb_altivec: Fix
+  heap buffer overflow in yuv2packedX\n swscale/ops_dispatch: account for the vertical
+  filter taps in the tail copy\n swscale/ops_dispatch: pass the line strides to copy_lines()
+  as ptrdiff_t\n swscale/uops: pad the horizontal filter weights to whole blocks\n
+  avcodec/apac: reset bitstream_index unconditionally to avoid integer overflow\n
+  avcodec/vorbisenc: dont assert on non finite input\n avcodec/rv34: do not copy an
+  unused reference line in the edge emulation\n avcodec/rv34: do not await a negative
+  reference-frame row\n avcodec/vp9: unref next_refs in vp9_decode_flush\n avcodec/vp8:
+  do not await a negative reference-frame row\n avformat/vpk: Check the channel count
+  before dividing in the last block\n avformat: Restore the container channel layout
+  after a failed decoder open\n avcodec/dcadec: ignore reserved speaker positions
+  in coded channel order\n avformat/matroskaenc: reserve space for BlockAdditionMapping
+  even if Matroska muxer isn't enabled\n (fforge/pr/24457) ffmpeg: fix matching of
+  non-apic stream specifiers\n avformat/cbs: move AV1 feature definition to their
+  own header\n (fforge/pr/24399) avcodec/bsf/dca_core: clear profile value on init()\n
+  avformat/sierravmd: require a 6bit palette in the probe\n libswscale: use unaligned
+  read/write macros in planarCopyWrapper\n avformat/binka: reject truncated packet
+  reads\n avfilter/acrossover: reject non-finite parameters\n avfilter/aiir: reject
+  non-finite parameters\n avfilter/firequalizer: reject overflowing delays\n avcodec/wavpackenc:
+  handle INT32_MIN samples\n avfilter/aecho: reject non-finite delays and decays\n
+  libswresample/aarch64: Fix sign extension in audio conversion\n avcodec/audiotoolbox:
+  use 64-bit channel masks\n avfilter/aarch64/vf_bwdif_init: Fix stride bound check\n
+  avformat/dashenc: free http options on avio_open_dyn_buf failure\n avcodec/bmp:
+  fix misaligned read in 16-bit decoding\n avcodec/huffyuv: seed the median predictor
+  endian independently\n avformat/wvdec: convert flags to defines\n (fforge/pr/24299)
+  avformat/iamf_writer: don't discard skip samples signaled through side data for
+  Opus\n (fforge/pr/24295) avformat/movenc: fix crash when flushing a fragment with
+  no data\n swscale/loongarch: fix buffer underflow in yuv2plane1_8_lsx/lasx\n (fforge/pr/24279)
+  avcodec/h264_direct: do not read the other field's rows of colocated mb_type\n avcodec/h264_slice:
+  clear the ER picture when starting a second field\n Revert \"fftools/ffmpeg_sched:
+  allow throttling decoder outputs\"\n avcodec/libdav1d: fix leak of frames on failure\n
+  avcodec/mips/cabac: Fix building on OpenBSD/mips64\n avcodec/pthread_frame: sync
+  decoded side data to all worker threads\n (fforge/pr/24146) avcodec/h264_direct:
+  await both fields of a colocated field pair\n avcodec/h264_direct: move check before
+  loading things"
+ReleaseNotesUrl: https://raw.githubusercontent.com/FFmpeg/FFmpeg/release/9.0/Changelog
+ShortDescription: A complete, cross-platform solution to record, convert and stream
+  audio and video.
+Tags:
+- audio
+- codec
+- convert
+- decode
+- demux
+- encode
+- ffmpeg
+- filter
+- media
+- multimedia
+- mux
+- record
+- stream
+- streaming
+- transcode
+- video

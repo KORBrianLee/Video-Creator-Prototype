@@ -82,6 +82,16 @@ Other fields: `width`/`height` instead of `quality`; `transitionType` (`crossfad
 
 Keep `intensity` at 0.1–0.2 for a realistic camera feel; above 0.3 looks artificial.
 
+## Action scenes (keyframe sequence)
+
+When a shot needs people or vehicles to move (someone walks in, a vehicle approaches and stops), there is no video model; build an animatic from keyframes of one fixed camera:
+
+1. Generate keyframe 1 with the full scene description.
+2. Generate each next keyframe with the previous one in `reference_image_paths`, starting the prompt with "Edit the reference image. Keep everything identical: camera, framing, buildings, sky … Only change: …" and naming the one or two things that move.
+3. 3–5 keyframes, 4–8 seconds each, all `"motion": "static"`, `crossfade` with `transition` 0.6–0.8, no `title`/`caption` unless asked.
+4. If a keyframe ignores a position change, regenerate it once with more concrete placement (left/right, distance from camera, what is under the feet); then accept and tell the user what is off.
+5. Tell the user plainly that the result is a keyframe animatic: positions change through dissolves, not continuous motion.
+
 ## Realism defaults
 
 For photoreal requests, write prompts that read like a camera description (lens, aperture, light direction, time of day, real materials, film stock), keep `saturation` near 0.95, and add `"letterbox": true` for a cinematic 2.39:1 look on `16:9`.
