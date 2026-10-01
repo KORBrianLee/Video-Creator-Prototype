@@ -1,0 +1,15 @@
+---
+description: Where all video-generation files are stored (D drive, never C)
+alwaysApply: true
+---
+
+# Video file storage
+
+All files produced while making videos (generated images, storyboards, keyframes, temp files, rendered MP4s) go in the Video Creator storage folder, which is on the D drive by default (`D:\VideoCreator`). Do not leave video work on the C drive.
+
+- Read the folder once per task: `python <path-to>/vc_config.py --show` and use `storage_dir`.
+- Layout: `projects/<slug>/storyboard.json`, `assets/`, `renders/`, `tmp/` under `storage_dir`.
+- `GenerateImage` can only save into the workspace `assets/` folder (usually on C). Right after each image is generated, move it into `<storage_dir>/assets/` with a shell command and use the new location from then on. Never leave generated images behind in the workspace.
+- Run `video_render.py` and `keyframes_to_video.py` without `--out` or `--root` so they use the storage folder and its `tmp/` for scratch files.
+- If `storage_dir` is on the C drive, tell the user once that large video files will fill C and suggest running `python setup.py` to choose D.
+- If the settings file does not exist yet, the first renderer run opens the setup window on the user's screen and waits for their choice; tell the user to look for it. On machines with no display the scripts use the default `D:\VideoCreator` without saving, and the user can run `python setup.py` later.

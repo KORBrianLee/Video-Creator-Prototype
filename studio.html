@@ -436,7 +436,7 @@ function normalize(raw, qualityOverride) {
     return {
       image: s.image || null,
       background: s.background || '#000',
-      duration: Math.max(0.5, Number(s.duration) || 4),
+      duration: Math.max(0.1, Number(s.duration) || 4),
       motion: MOTIONS.includes(s.motion) ? s.motion : (s.image ? MOTIONS[i % 4] : 'static'),
       intensity: clamp(s.intensity ?? 0.15, 0, 0.6),
       focus: Array.isArray(s.focus) ? [clamp(Number(s.focus[0])), clamp(Number(s.focus[1]))] : null,

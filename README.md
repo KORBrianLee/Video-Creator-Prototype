@@ -4,10 +4,13 @@
 
 Cursor 에이전트 채팅에 영상 내용을 쓰면, 에이전트가 장면 이미지를 만들고 MP4 파일까지 완성하는 도구입니다. 외부 영상 서비스 가입이나 별도 로그인이 없습니다. 이미지는 Cursor에 기본으로 있는 이미지 생성으로 만들고, 영상은 내 컴퓨터에서 렌더링합니다(GPU 영상 인코더가 있으면 사용).
 
-구성은 세 가지입니다.
+구성은 다음과 같습니다.
 
 - `.cursor/skills/cursor-video/SKILL.md`: 에이전트가 장면을 기획하고, 이미지를 만들고, 스토리보드를 쓰고, 렌더링까지 하게 하는 스킬.
+- `.cursor/rules/video-storage.mdc`: 모든 영상 파일을 D 드라이브 저장 폴더에 두라는 규칙.
+- `setup.py`, `vc_config.py`, `install.bat`, `install.sh`: 설치 확인과 첫 실행 환경 선택 창, 설정 저장.
 - `video_render.py`: 에이전트가 터미널에서 실행하는 렌더러. 스토리보드를 ffmpeg로 MP4로 만듭니다. Python 표준 라이브러리만 씁니다.
+- `keyframes_to_video.py`: 키프레임 사진 사이를 보간해 부드러운 영상으로 만드는 도구.
 - `studio.html`: 브라우저 렌더러. 미리보기·직접 편집용이고, 에이전트가 터미널을 쓸 수 없을 때의 대체 수단입니다.
 
 ## 설치
@@ -37,24 +40,56 @@ Cursor 에이전트 채팅에 영상 내용을 쓰면, 에이전트가 장면 �
 
 Cursor를 다시 시작하면 어느 프로젝트에서든 스킬이 동작합니다. 이때 스토리보드와 이미지는 그 프로젝트 안(`video-projects/`, `assets/`)에 만들어집니다. 이 저장소 폴더는 지우지 말고 그대로 두세요. 에이전트가 `video_render.py` 위치를 물으면 이 폴더 경로를 알려 주면 됩니다.
 
+## 처음 실행할 때 환경 선택
+
+설치 후 한 번 실행합니다. 설정 창이 열려 실행 환경을 고를 수 있습니다.
+
+```bash
+python setup.py          # Windows에서는 install.bat 더블클릭도 같습니다
+```
+
+| 항목 | 선택지 |
+| --- | --- |
+| 렌더링 방식 | 자동(GPU 우선, 안 되면 CPU) / GPU만 / CPU만 |
+| 인코더 | 이 PC에서 실제로 동작하는 것만 목록에 나옵니다(예: `h264_qsv`, `h264_nvenc`) |
+| 저장 위치 | 기본 `D:\VideoCreator`. 이미지·스토리보드·결과 영상·임시 파일이 모두 이 폴더 아래에 저장됩니다 |
+| 기본 화질 | 720p / 1080p / 1440p / 4k |
+| 프레임 보간 | GPU 크로스페이드(빠름) / 움직임 보간(느리지만 자연스러움) |
+| 스킬 설치 | 모든 프로젝트에서 쓰도록 Cursor 스킬을 복사 |
+
+- 선택은 `video-creator.config.json`에 저장되고(Git에는 올라가지 않음), 이후에는 창이 뜨지 않습니다. 바꾸려면 `python setup.py`를 다시 실행하세요. 현재 설정은 `python vc_config.py --show`로 봅니다.
+- 영상 파일은 용량이 커서 C 드라이브가 아닌 D 드라이브 사용을 기본으로 합니다. D 드라이브가 없는 PC(또는 macOS/Linux)에서는 홈 폴더 아래 `VideoCreator`가 기본입니다. C 드라이브를 고르면 경고가 뜹니다.
+- 설정 전에 에이전트가 렌더러를 실행해도 같은 창이 사용자 화면에 열리고, 선택할 때까지 기다립니다. 화면이 없는 환경(서버 등)에서는 기본값(D 드라이브)만 쓰고 저장하지는 않으며, 나중에 `python setup.py`로 정할 수 있습니다.
+- `.cursor/rules/video-storage.mdc`가 에이전트에게 같은 규칙을 알려 줍니다. 생성 이미지는 Cursor 도구가 작업 폴더에 저장하므로, 에이전트가 만든 직후 저장 위치로 옮깁니다.
+
 ## 채팅만으로 영상 만들기
 
 1. 에이전트 채팅에 요청합니다. 예: "제주 바다 일출 20초 영상 만들어 줘, 16:9"
-2. 에이전트가 장면 이미지를 만들고 `video-projects/<이름>/storyboard.json`을 쓴 뒤, `video_render.py`로 렌더링합니다.
-3. 완성된 파일은 `renders/<이름>.mp4`입니다. 에이전트가 경로, 길이, 사용한 인코더를 알려 줍니다.
+2. 에이전트가 장면 이미지를 만들어 `<저장 위치>/assets/`에 옮기고 `<저장 위치>/projects/<이름>/storyboard.json`을 쓴 뒤, `video_render.py`로 렌더링합니다.
+3. 완성된 파일은 `<저장 위치>/renders/<이름>.mp4`입니다. 에이전트가 경로, 길이, 사용한 인코더를 알려 줍니다.
 
 직접 렌더링할 수도 있습니다.
 
 ```bash
-python video_render.py video-projects/<이름>/storyboard.json
-python video_render.py video-projects/<이름>/storyboard.json --quality 4k --codec hevc
+python video_render.py D:/VideoCreator/projects/<이름>/storyboard.json
+python video_render.py D:/VideoCreator/projects/<이름>/storyboard.json --quality 4k --codec hevc
 ```
 
 GPU 영상 인코더(NVIDIA NVENC, Intel Quick Sync, AMD AMF, Apple VideoToolbox)를 순서대로 시험해 보고, 동작하는 것이 없으면 소프트웨어 인코더(libx264)를 씁니다. 장면 합성(카메라 움직임, 자막, 색보정)은 ffmpeg가 CPU로 처리합니다. 자막 글꼴은 Windows는 맑은 고딕, macOS는 Apple SD Gothic Neo를 자동으로 씁니다. 다른 글꼴은 `--font`로 지정합니다.
 
 ### 사람·장비가 움직이는 장면
 
-Cursor에는 영상 생성 모델이 없으므로, 피사체가 움직여야 하는 장면은 고정 카메라 키프레임 3~5장을 순서대로 만들고 디졸브로 잇는 애니마틱으로 만듭니다. 에이전트는 이전 키프레임을 참조 이미지로 넘겨 카메라·배경·인물·장비를 같게 유지하고, 움직이는 대상만 바꿉니다. 결과는 연속 동작이 아니라 장면이 바뀌며 위치가 변하는 영상이고, 세밀한 위치(발 위치 등)는 이미지 생성기가 정확히 따르지 않을 수 있습니다. 진짜 연속 동작이 필요하면 별도의 영상 생성 서비스가 필요합니다.
+Cursor에는 영상 생성 모델이 없으므로, 피사체가 움직여야 하는 장면은 고정 카메라 키프레임 12~16장을 순서대로 만들고, 그 사이 프레임을 `keyframes_to_video.py`가 30fps로 채웁니다. 에이전트는 바로 앞 키프레임 한 장만 참조 이미지로 넘겨 카메라·배경·인물·장비를 같게 유지하고, 움직이는 대상만 바꿉니다(끝 상태까지 함께 넘기면 끝 자세가 앞쪽 사진에 섞여 들어갑니다).
+
+```bash
+python keyframes_to_video.py D:/VideoCreator/projects/<이름>/storyboard.json            # 설정의 보간 방식
+python keyframes_to_video.py D:/VideoCreator/projects/<이름>/storyboard.json --mode gpu  # GPU 크로스페이드, 약 20초
+python keyframes_to_video.py D:/VideoCreator/projects/<이름>/storyboard.json --mode mci  # 움직임 보간, 약 5분
+```
+
+- `gpu`: OpenCL로 GPU에서 크로스페이드를 하고 GPU 인코더로 저장합니다. 빠르지만 움직이는 물체가 전환 중에 약간 겹쳐 보입니다.
+- `mci`: ffmpeg 움직임 보간(`minterpolate`)을 키프레임 사이 구간별로 나눠 모든 CPU 코어에서 동시에 계산합니다. 더 자연스럽지만 이 보간 필터는 GPU 버전이 없어 느립니다. 인코딩은 GPU로 합니다.
+- 결과는 연속 동작이 아니라 키프레임 사이를 보간한 영상이고, 배경 세부가 약간 일렁일 수 있습니다. 세밀한 위치(발 위치 등)는 이미지 생성기가 정확히 따르지 않을 수 있습니다. 진짜 연속 동작이 필요하면 별도의 영상 생성 서비스가 필요합니다.
 
 ### 추천 모델
 

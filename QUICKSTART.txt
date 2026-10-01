@@ -34,18 +34,33 @@ MP4 파일까지 완성해 주는 도구입니다. 별도 로그인은 없습니
   ffmpeg -version
 
 
-4. 데모로 동작 확인
--------------------
+4. 첫 실행 설정 (설정 창이 뜹니다)
+----------------------------------
   cd Video-Creator-Prototype
+  python setup.py
+  (Windows에서는 install.bat 더블클릭도 같습니다)
+
+  창에서 고르는 것
+    - 렌더링 방식: 자동(GPU 우선) / GPU만 / CPU만
+    - 인코더: 이 PC에서 동작하는 것만 나옵니다
+    - 저장 위치: 기본 D:\VideoCreator (영상 파일은 C 드라이브를 피하세요)
+    - 기본 화질, 프레임 보간 방식
+    - "Cursor 스킬 설치" 체크 (모든 프로젝트에서 쓰려면 체크)
+  잘 모르겠으면 [기본값으로 시작]을 누르세요. 나중에 python setup.py로 다시 바꿀 수 있습니다.
+  (Linux에서 창이 안 뜨면 python3-tk를 설치하거나, 터미널 질문에 답하세요.)
+
+
+5. 데모로 동작 확인
+-------------------
   python video_render.py video-projects/demo/storyboard.json
 
-  -> 마지막 줄에 "Done: ...renders\video-creator-demo.mp4"가 나오면 성공.
+  -> 마지막 줄에 "Done: D:\VideoCreator\renders\video-creator-demo.mp4"가 나오면 성공.
   -> 영상 열어 보기:
-     start renders/video-creator-demo.mp4
-     [mac] open renders/video-creator-demo.mp4
+     start D:/VideoCreator/renders/video-creator-demo.mp4
+     [mac] open ~/VideoCreator/renders/video-creator-demo.mp4
 
 
-5. Cursor에서 쓰기
+6. Cursor에서 쓰기
 ------------------
   Cursor에서 File -> Open Folder 로 Video-Creator-Prototype 폴더를 엽니다.
   에이전트 채팅에 이렇게 요청합니다.
@@ -59,15 +74,16 @@ MP4 파일까지 완성해 주는 도구입니다. 별도 로그인은 없습니
 
   사람·장비가 움직여야 하는 장면 (예: 작업자가 들어오고 차량이 멈춤)
     Cursor에는 영상 생성 모델이 없어서, 고정 카메라로 동작 순서대로
-    키프레임 3~5장을 만들고 디졸브로 잇습니다(애니마틱).
+    키프레임 12~16장을 만들고, 그 사이를 30fps로 보간해 부드럽게 잇습니다.
     예) 작업자가 선로 옆 위험영역에 들어서자 기관차가 멈추는 장면을
-        고정 카메라 키프레임 3장으로 만들어 줘
-    -> 연속 동작이 아니라 장면이 바뀌며 위치가 변하는 영상입니다.
+        고정 카메라 키프레임 16장으로 만들어 줘
+    -> 연속 동작이 아니라 키프레임 사이를 보간한 영상입니다.
+    -> 보간 방식: GPU 크로스페이드(약 20초) / 움직임 보간(약 5분, 더 자연스러움)
     -> 발 위치처럼 세밀한 위치는 이미지 생성기가 정확히 따르지 않을 수 있습니다.
        "카메라에서 12m, 왼쪽 레일 바로 옆 자갈 위"처럼 구체적으로 쓰세요.
 
 
-6. 추천 모델과 생각 단계
+7. 추천 모델과 생각 단계
 ------------------------
   추천: Claude Sonnet 5.5 + 생각 단계 "보통"
 
@@ -86,8 +102,11 @@ MP4 파일까지 완성해 주는 도구입니다. 별도 로그인은 없습니
   - 같은 장소의 영상은 처음 만든 이미지를 참조로 재사용하라고 요청하세요.
 
 
-7. (선택) 다른 프로젝트에서도 쓰기
+8. (선택) 다른 프로젝트에서도 쓰기
 ---------------------------------
+  4번 설정 창에서 "Cursor 스킬 설치"를 체크했다면 이미 설치되었습니다.
+  나중에 하려면: python setup.py 를 다시 실행해서 체크하거나
+
   cp -r .cursor/skills/cursor-video ~/.cursor/skills/
 
   Cursor를 다시 시작하면 어느 폴더에서든 동작합니다.
@@ -111,6 +130,9 @@ MP4 파일까지 완성해 주는 도구입니다. 별도 로그인은 없습니
 
   - "Error: images not found"
       -> 에이전트에게 "이미지 경로 고쳐서 다시 렌더링해 줘"라고 요청하세요.
+
+  - 저장 위치나 GPU/CPU 선택을 바꾸고 싶음
+      -> python setup.py 를 다시 실행합니다. 현재 설정: python vc_config.py --show
 
 
 지켜 주세요

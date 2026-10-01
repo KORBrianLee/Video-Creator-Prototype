@@ -22,6 +22,8 @@ import time
 import zlib
 from pathlib import Path
 
+import vc_config
+
 ASPECTS = {'16:9': (16, 9), '9:16': (9, 16), '1:1': (1, 1), '4:3': (4, 3), '3:4': (3, 4), '21:9': (21, 9)}
 QUALITY = {'720p': 720, '1080p': 1080, '1440p': 1440, '4k': 2160}
 MOTIONS = ['zoom-in', 'zoom-out', 'pan-left', 'pan-right', 'pan-up', 'pan-down', 'static']
@@ -101,7 +103,7 @@ def normalize(raw, quality_override=None):
         s = s if isinstance(s, dict) else {}
         ttype = s.get('transitionType') if s.get('transitionType') in TRANSITIONS else def_type
         focus = s.get('focus')
-        frames = max(1, round(max(0.5, num(s.get('duration'), 4)) * fps))
+        frames = max(2, round(max(0.1, num(s.get('duration'), 4)) * fps))
         scenes.append({
             'image': s.get('image') or None,
             'background': s.get('background') or '#000',
@@ -333,18 +335,41 @@ def encoder_args(name, mbps):
     return args
 
 
-def pick_encoder(ffmpeg, codec, mbps):
+def is_software(name):
+    return name.startswith('lib')
+
+
+def encoder_works(ffmpeg, name, mbps, listed):
+    if not re.search(rf'\s{re.escape(name)}\s', listed):
+        return False
+    test = [ffmpeg, '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=black:s=320x240:r=30:d=0.3',
+            *encoder_args(name, mbps), '-f', 'null', '-']
+    return subprocess.run(test, capture_output=True).returncode == 0
+
+
+def detect_encoders(ffmpeg, codec='h264', mbps=8):
+    """Encoders of this codec that actually run on this machine, GPU ones first."""
     listed = subprocess.run([ffmpeg, '-hide_banner', '-encoders'], capture_output=True, text=True).stdout
-    for name in ENCODERS[codec]:
-        if not re.search(rf'\s{re.escape(name)}\s', listed):
-            continue
-        test = [ffmpeg, '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=black:s=320x240:r=30:d=0.3',
-                *encoder_args(name, mbps), '-f', 'null', '-']
-        if subprocess.run(test, capture_output=True).returncode == 0:
+    return [n for n in ENCODERS[codec] if encoder_works(ffmpeg, n, mbps, listed)]
+
+
+def pick_encoder(ffmpeg, codec, mbps, mode='auto', preferred='auto'):
+    """mode: auto (GPU first, then CPU), gpu (GPU, CPU only as a warned fallback), cpu (software only)."""
+    listed = subprocess.run([ffmpeg, '-hide_banner', '-encoders'], capture_output=True, text=True).stdout
+    names = list(ENCODERS[codec])
+    if preferred in names:
+        names.remove(preferred)
+        names.insert(0, preferred)
+    if mode == 'cpu':
+        names = [n for n in names if is_software(n)]
+    for name in names:
+        if encoder_works(ffmpeg, name, mbps, listed):
+            if mode == 'gpu' and is_software(name):
+                print('No working GPU encoder for this codec; using the CPU encoder.')
             return name
     if codec != 'h264':
         print(f'No working {codec} encoder; using h264.')
-        return pick_encoder(ffmpeg, 'h264', mbps)
+        return pick_encoder(ffmpeg, 'h264', mbps, mode, preferred)
     raise RenderError('ffmpeg has no working H.264 encoder')
 
 
@@ -491,8 +516,8 @@ def main():
         sys.stdout.reconfigure(errors='replace')
     ap = argparse.ArgumentParser(description='Render a storyboard.json to MP4 with ffmpeg.')
     ap.add_argument('storyboard')
-    ap.add_argument('--root', default='.', help='folder searched for images and music (default: current folder)')
-    ap.add_argument('--out', help='output file (default: <root>/renders/<title>.mp4)')
+    ap.add_argument('--root', help='folder searched for images and music (default: the storage folder from setup)')
+    ap.add_argument('--out', help='output file (default: <storage>/renders/<title>.mp4)')
     ap.add_argument('--quality', choices=list(QUALITY), help='override storyboard quality')
     ap.add_argument('--codec', choices=list(ENCODERS), default='h264')
     ap.add_argument('--font', help='font file for titles and captions')
@@ -504,13 +529,16 @@ def main():
         raise RenderError('ffmpeg not found. Install it: Windows "winget install --id Gyan.FFmpeg -e", '
                           'macOS "brew install ffmpeg", Linux "sudo apt install ffmpeg"; then open a new terminal.')
 
+    cfg = vc_config.ensure_config()
+    storage = Path(cfg['storage_dir'])
     sb_path = Path(a.storyboard).resolve()
-    root = Path(a.root).resolve()
+    root = Path(a.root).resolve() if a.root else storage
     try:
         raw = json.loads(sb_path.read_text(encoding='utf-8-sig'))
     except (OSError, json.JSONDecodeError) as e:
         raise RenderError(f'cannot read storyboard: {e}')
-    board = normalize(raw, a.quality)
+    quality = a.quality or (None if raw.get('quality') or raw.get('width') else cfg['quality'])
+    board = normalize(raw, quality)
 
     index = index_files(root)
     bases = [sb_path.parent, root]
@@ -528,11 +556,11 @@ def main():
 
     needs_text = any(s['title'] or s['caption'] for s in board['scenes'])
     slug = re.sub(r'[^\w.-]+', '-', board['title']).strip('-.') or 'video'
-    out_path = Path(a.out).resolve() if a.out else root / 'renders' / f'{slug}.mp4'
+    out_path = Path(a.out).resolve() if a.out else storage / 'renders' / f'{slug}.mp4'
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    encoder = pick_encoder(ffmpeg, a.codec, board['mbps'])
-    with tempfile.TemporaryDirectory(prefix='video-render-') as td:
+    encoder = pick_encoder(ffmpeg, a.codec, board['mbps'], cfg['render_mode'], cfg['encoder'])
+    with tempfile.TemporaryDirectory(prefix='video-render-', dir=vc_config.temp_dir(cfg)) as td:
         tmp = Path(td)
         fonts = {'bold': None, 'regular': None}
         if needs_text:
