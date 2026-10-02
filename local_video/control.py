@@ -602,6 +602,8 @@ class EngineLock:
             self.stream = None
 
 def worker(job_id):
+    from .resources import run_unthrottled
+    run_unthrottled()
     job = job_path(job_id)
     cfg, root = load_config()
     initial = read_json(job / "status.json")

@@ -168,7 +168,8 @@ def run_stage(root, work, name, request, progress, is_cancelled):
             media._write_json(work / (name + ".metrics.json"), record)
             return record
     _, free = media._memory(os.getpid())
-    from .resources import PressureGuard, record_drop, stage_limits, start_requirement_gib
+    from .resources import (CpuLimitMonitor, PressureGuard, record_drop, run_unthrottled, stage_limits,
+                            start_requirement_gib, wait_for_cooling)
     limits = stage_limits(request, "neodragon")
     minimum = start_requirement_gib(root, name, limits)
     start_free = free
@@ -190,8 +191,10 @@ def run_stage(root, work, name, request, progress, is_cancelled):
     record = {"name": name, "state": "running", "peak_working_set_bytes": 0, "peak_private_resident_bytes": 0,
               "minimum_system_free_bytes": free, "working_set_limit_gib": cap,
               "reserve_ram_gib": reserve, "one_time_conversion": conversion}
+    monitor = CpuLimitMonitor()
+    wait_for_cooling(monitor, is_cancelled, progress)
     started = heartbeat = time.monotonic()
-    process = None
+    process = cpu = None
     try:
         with (work / (name + ".log")).open("wb") as log:
             process = subprocess.Popen([str(python), str(stage_file), "--runtime-dir", str(root),
@@ -199,6 +202,7 @@ def run_stage(root, work, name, request, progress, is_cancelled):
                                        cwd=work, env=environment(root, request["threads"]),
                                        stdout=log, stderr=log, stdin=subprocess.DEVNULL, creationflags=flags)
             record["process_id"] = process.pid
+            run_unthrottled(getattr(process, "_handle", None))
             progress({"stage": name, "phase_process_id": process.pid})
             while process.poll() is None:
                 media._cancel(is_cancelled)
@@ -213,7 +217,9 @@ def run_stage(root, work, name, request, progress, is_cancelled):
                 if time.monotonic() - started > request.get("maximum_scene_seconds", 1800):
                     raise RuntimeError(f"단계 {name}가 실행 제한 시간을 넘었습니다.")
                 if time.monotonic() - heartbeat >= 15:
+                    cpu = monitor.sample(time.monotonic()) or cpu
                     progress({"stage": name, "working_set_gib": round(working/2**30, 3),
+                              "cpu_limit_pct": (cpu or {}).get("limit_pct"),
                               "peak_working_set_gib": round(record["peak_working_set_bytes"]/2**30, 3),
                               "free_ram_gib": round(free/2**30, 3), "reclaimable_mapped_gib": round(reclaimable/2**30, 3),
                               "scene_elapsed_seconds": round(time.monotonic()-started, 1)})
@@ -237,6 +243,8 @@ def run_stage(root, work, name, request, progress, is_cancelled):
         if process is not None:
             media._stop_owned(process)
             record_drop(root, name, start_free, record["minimum_system_free_bytes"], record["peak_private_resident_bytes"])
+        record.update(monitor.summary())
+        monitor.close()
         record["elapsed_seconds"] = round(time.monotonic()-started, 3)
         media._write_json(work / (name + ".metrics.json"), record)
 

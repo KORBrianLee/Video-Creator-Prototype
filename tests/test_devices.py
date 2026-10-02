@@ -128,6 +128,45 @@ class DeviceTests(unittest.TestCase):
             resources.record_drop(folder, "video_infer", int(5 * gib), int(1 * gib), own_peak_bytes=int(1.5 * gib))
             self.assertAlmostEqual(resources.learned_drops(folder)["video_infer"], 1.5, places=2)
 
+    def test_engine_children_opt_out_of_power_throttling(self):
+        import os, subprocess, sys
+        from local_video import resources
+        if os.name != "nt":
+            self.skipTest("Windows power throttling only")
+        child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(10)"],
+                                 creationflags=subprocess.CREATE_NO_WINDOW | subprocess.BELOW_NORMAL_PRIORITY_CLASS)
+        try:
+            self.assertTrue(resources.run_unthrottled(child._handle))
+        finally:
+            child.kill()
+            child.wait()
+
+    def test_cooling_wait_holds_only_while_clocks_are_capped(self):
+        from local_video import resources
+        class Monitor:
+            readings = iter([40.0, 50.0, 95.0])
+            def sample(self, now=None):
+                return {"limit_pct": next(self.readings)}
+        updates = []
+        with patch("time.sleep"):
+            self.assertEqual(resources.wait_for_cooling(Monitor(), lambda: False, updates.append), 95.0)
+        self.assertEqual([u["stage"] for u in updates], ["cooling_down", "cooling_down"])
+        self.assertIsNone(resources.wait_for_cooling(None, lambda: False, updates.append))
+
+    def test_cpu_limit_monitor_reads_real_counter_or_degrades(self):
+        import time
+        from local_video import resources
+        monitor = resources.CpuLimitMonitor()
+        try:
+            time.sleep(0.2)
+            sample = monitor.sample(time.monotonic())
+            if sample is not None and "limit_pct" in sample:
+                self.assertTrue(0 <= sample["limit_pct"] <= 100)
+                self.assertEqual(monitor.summary()["cpu_limit_lowest_pct"], sample["limit_pct"])
+        finally:
+            monitor.close()
+        self.assertIsNone(monitor.sample())
+
     def test_ram_only_shortfall_is_queued_but_other_problems_are_refused(self):
         from local_video import control
         ram_only = {"ready": False, "ram_shortfall_only": True, "errors": ["RAM"], "quality_ready": False}

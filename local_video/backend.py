@@ -269,7 +269,8 @@ def _infer(command: list[str], work: Path, request: dict, progress: Callable,
     temporary_root = _path_in_runtime(runtime / "tmp", runtime.resolve())
     env.update(TEMP=str(temporary_root), TMP=str(temporary_root), TMPDIR=str(temporary_root))
     temporary_root.mkdir(parents=True, exist_ok=True)
-    from .resources import PressureGuard, record_drop, stage_limits, start_requirement_gib
+    from .resources import (CpuLimitMonitor, PressureGuard, record_drop, run_unthrottled, stage_limits,
+                            start_requirement_gib, wait_for_cooling)
     limits = stage_limits(request)
     cap = limits["maximum_working_set_gib"] * 2**30
     reserve = limits["reserve_ram_gib"] * 2**30
@@ -283,11 +284,15 @@ def _infer(command: list[str], work: Path, request: dict, progress: Callable,
     if not all(math.isfinite(v) and v > 0 for v in (cap, reserve, timeout)):
         raise ValueError("메모리와 시간 보호 기준은 유한한 양수여야 합니다.")
     flags = (subprocess.CREATE_NO_WINDOW | subprocess.BELOW_NORMAL_PRIORITY_CLASS) if os.name == "nt" else 0
+    monitor = CpuLimitMonitor()
+    wait_for_cooling(monitor, is_cancelled, progress)
     started, peak, last_progress, position, stage = time.monotonic(), 0, 0.0, 0, "loading"
+    cpu = None
     log_path = work / "inference.log"
     with log_path.open("wb", buffering=0) as log:
         process = subprocess.Popen(command, stdout=log, stderr=log, stdin=subprocess.DEVNULL,
                                    cwd=work, env=env, shell=False, creationflags=flags)
+        run_unthrottled(getattr(process, "_handle", None))
         try:
             while process.poll() is None:
                 _cancel(is_cancelled)
@@ -303,6 +308,7 @@ def _infer(command: list[str], work: Path, request: dict, progress: Callable,
                 if now - started > timeout:
                     raise TimeoutError("장면 생성 시간 보호 기준을 넘었습니다. 완료된 장면 캐시는 유지됩니다.")
                 if now - last_progress >= 2:
+                    cpu = monitor.sample(now) or cpu
                     with log_path.open("rb") as read_log:
                         read_log.seek(position)
                         tail = read_log.read(65536).decode("utf-8", errors="replace")
@@ -316,7 +322,7 @@ def _infer(command: list[str], work: Path, request: dict, progress: Callable,
                               "scene_elapsed_seconds": round(now-started, 1), "engine_pid": process.pid,
                               "working_set_gib": round(working/2**30, 3), "peak_working_set_gib": round(peak/2**30, 3),
                               "free_ram_gib": round(available/2**30, 3), "reclaimable_mapped_gib": round(reclaimable/2**30, 3),
-                              "memory_pressure": pressured,
+                              "memory_pressure": pressured, "cpu_limit_pct": (cpu or {}).get("limit_pct"),
                               "inference_log_path": str(log_path)}
                     if matches and int(matches[-1][1]) == steps:
                         update.update(step=int(matches[-1][0]), steps=steps)
@@ -330,8 +336,9 @@ def _infer(command: list[str], work: Path, request: dict, progress: Callable,
         finally:
             _stop_owned(process)
             record_drop(runtime, stage_name, start_free, lowest_free, own_peak)
+            monitor.close()
     return {"inference_seconds": round(time.monotonic()-started, 3),
-            "peak_working_set_gib": round(peak/2**30, 3), "inference_log_path": str(log_path)}
+            "peak_working_set_gib": round(peak/2**30, 3), "inference_log_path": str(log_path), **monitor.summary()}
 
 
 def _writer(path: Path, settings: dict):

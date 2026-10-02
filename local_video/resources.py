@@ -208,6 +208,106 @@ def wait_for_memory(minimum_gib, is_cancelled, progress, timeout=300.0, poll=2.0
         time.sleep(poll)
 
 
+def run_unthrottled(handle=None):
+    """Opt a process out of Windows power throttling (EcoQoS).
+
+    Windowless below-normal processes are otherwise eligible for efficiency
+    cores and low clocks, which slows every step without saving total energy.
+    Priority stays below normal so the desktop remains responsive.
+    """
+    if os.name != "nt":
+        return False
+    class State(ctypes.Structure):
+        _fields_ = [("version", ctypes.c_ulong), ("control", ctypes.c_ulong), ("state", ctypes.c_ulong)]
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.GetCurrentProcess.restype = ctypes.c_void_p
+    kernel.SetProcessInformation.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_ulong]
+    # PROCESS_POWER_THROTTLING_EXECUTION_SPEED | IGNORE_TIMER_RESOLUTION, state 0 = never throttle.
+    state = State(1, 0x1 | 0x4, 0)
+    target = ctypes.c_void_p(int(handle)) if handle else kernel.GetCurrentProcess()
+    return bool(kernel.SetProcessInformation(target, 4, ctypes.byref(state), ctypes.sizeof(state)))
+
+
+class CpuLimitMonitor:
+    """Firmware clock limit from '% Performance Limit' (100 means clocks are not held back)."""
+    COUNTERS = {"limit_pct": r"\Processor Information(_Total)\% Performance Limit",
+                "performance_pct": r"\Processor Information(_Total)\% Processor Performance"}
+
+    def __init__(self):
+        self.query, self.counters, self.lowest, self.limited_seconds, self.last = None, {}, None, 0.0, None
+        if os.name != "nt":
+            return
+        try:
+            pdh = self.pdh = ctypes.WinDLL("pdh")
+            query = ctypes.c_void_p()
+            if pdh.PdhOpenQueryW(None, None, ctypes.byref(query)):
+                return
+            self.query = query
+            for name, path in self.COUNTERS.items():
+                counter = ctypes.c_void_p()
+                if not pdh.PdhAddEnglishCounterW(query, ctypes.c_wchar_p(path), None, ctypes.byref(counter)):
+                    self.counters[name] = counter
+            pdh.PdhCollectQueryData(query)
+        except OSError:
+            self.query = None
+
+    def sample(self, now=None):
+        if not self.query or not self.counters:
+            return None
+        class Value(ctypes.Structure):
+            _fields_ = [("status", ctypes.c_ulong), ("pad", ctypes.c_ulong), ("value", ctypes.c_double)]
+        if self.pdh.PdhCollectQueryData(self.query):
+            return None
+        result = {}
+        for name, counter in self.counters.items():
+            value = Value()
+            if not self.pdh.PdhGetFormattedCounterValue(counter, 0x200, None, ctypes.byref(value)):
+                result[name] = round(value.value, 1)
+        limit = result.get("limit_pct")
+        if limit is not None:
+            self.lowest = limit if self.lowest is None else min(self.lowest, limit)
+            if now is not None and self.last is not None and limit < 99:
+                self.limited_seconds += now - self.last
+        self.last = now
+        return result or None
+
+    def summary(self):
+        return {"cpu_limit_lowest_pct": self.lowest, "cpu_limited_seconds": round(self.limited_seconds, 1)}
+
+    def close(self):
+        if self.query:
+            self.pdh.PdhCloseQuery(self.query)
+            self.query = None
+
+
+def wait_for_cooling(monitor, is_cancelled, progress, threshold=60.0, timeout=90.0, poll=3.0):
+    """Hold a new stage while firmware caps clocks hard, so heat does not compound into a thermal trip."""
+    import time
+    started = time.monotonic()
+    while True:
+        sample = monitor.sample(time.monotonic()) if monitor else None
+        limit = (sample or {}).get("limit_pct")
+        if limit is None or limit >= threshold or time.monotonic() - started > timeout:
+            return limit
+        if is_cancelled():
+            raise InterruptedError("냉각 대기 중 취소됐습니다.")
+        progress({"stage": "cooling_down", "cpu_limit_pct": limit, "resume_at_pct": threshold})
+        time.sleep(poll)
+
+
+def power_state():
+    if os.name != "nt":
+        return None
+    class Status(ctypes.Structure):
+        _fields_ = [("ac", ctypes.c_ubyte), ("flag", ctypes.c_ubyte), ("percent", ctypes.c_ubyte),
+                    ("saver", ctypes.c_ubyte), ("life", ctypes.c_ulong), ("full", ctypes.c_ulong)]
+    status = Status()
+    if not ctypes.windll.kernel32.GetSystemPowerStatus(ctypes.byref(status)):
+        return None
+    return {"on_ac_power": status.ac == 1, "battery_saver": bool(status.saver & 1),
+            "battery_percent": None if status.percent == 255 else status.percent}
+
+
 def describe(cfg, profile, device_plan, root=None):
     limits = stage_limits(cfg, profile, device_plan)
     if root is not None:
@@ -221,4 +321,5 @@ def describe(cfg, profile, device_plan, root=None):
             "gpu_buffer_mib": budget // MIB if budget else None,
             "gpu_buffer_range_mib": [GPU_FLOOR // MIB, (GPU_SHARED_CEILING if (device or {}).get("shared_memory", True) else GPU_DISCRETE_CEILING) // MIB] if budget else None,
             "mode": {key: "auto" if is_auto(cfg.get(key)) else "manual" for key in RESOURCE_KEYS} | {"threads": "auto" if is_auto(cfg.get("threads_setting")) else "manual"},
+            "power": power_state(), "power_throttling": "disabled_for_engine_processes",
             "policy": "recomputed_before_each_stage_gpu_buffer_shrinks_under_ram_pressure"}
