@@ -14,6 +14,10 @@ import sys
 import time
 import uuid
 
+from .resources import RESOURCE_KEYS
+
+MEMORY_RETRIES = 2
+
 APP = Path(__file__).resolve().parent.parent
 TERMINAL = {"completed", "failed", "cancelled"}
 PRESETS = {"smoke", "preview", "quality"}
@@ -39,8 +43,9 @@ def read_json(path):
 def load_config():
     from .storage import default_runtime, runtime_root
     from .devices import BACKENDS
-    config = {"runtime_dir": default_runtime(), "backend": "auto", "model_profile": "neodragon", "threads": 4,
-              "minimum_free_ram_gib": 3.0, "reserve_ram_gib": 1.5, "maximum_working_set_gib": 5.0}
+    from .resources import auto_threads, check_value, is_auto
+    config = {"runtime_dir": default_runtime(), "backend": "auto", "model_profile": "neodragon", "threads": "auto",
+              **{key: "auto" for key in RESOURCE_KEYS}}
     if (APP / "video.config.json").is_file():
         config.update(read_json(APP / "video.config.json"))
     if os.environ.get("CVL_RUNTIME_DIR"):
@@ -55,12 +60,15 @@ def load_config():
         raise ValueError("GPU 예산은 유한한 양수여야 합니다.")
     if config["model_profile"] not in PROFILES:
         raise ValueError("지원 모델 선택: neodragon, lightning 또는 wan")
-    for key in ["minimum_free_ram_gib", "reserve_ram_gib", "maximum_working_set_gib"]:
-        value = config[key]
-        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
-            raise ValueError(f"{key}는 유한한 양수여야 합니다.")
-    if config["maximum_working_set_gib"] <= config["reserve_ram_gib"]:
+    for key in RESOURCE_KEYS:
+        config[key] = check_value(key, config.get(key))
+    if not is_auto(config["maximum_working_set_gib"]) and not is_auto(config["reserve_ram_gib"]) and config["maximum_working_set_gib"] <= config["reserve_ram_gib"]:
         raise ValueError("최대 작업 메모리는 시스템 보호 메모리보다 커야 합니다.")
+    config["threads_setting"] = config["threads"]
+    if is_auto(config["threads"]):
+        config["threads"] = auto_threads()
+    elif isinstance(config["threads"], bool) or not isinstance(config["threads"], int):
+        raise ValueError('threads는 "auto" 또는 정수여야 합니다.')
     config["threads"] = max(1, min(int(config["threads"]), os.cpu_count() or 4, 8))
     return config, root
 
@@ -286,20 +294,26 @@ def doctor(verify=False, profile=None):
             with packed.open("rb") as stream:
                 if hashlib.file_digest(stream, "sha256").hexdigest() != provenance.get("sha256"):
                     errors.append("INT8 변환 파일의 SHA256이 다릅니다.")
-    minimum = max(cfg["minimum_free_ram_gib"], selected["minimum_free_ram_gib"]) if profile == "wan" else max(cfg["minimum_free_ram_gib"], 3.0 if profile == "neodragon" else 4.5)
-    if mem["free_ram_gib"] < minimum:
+    from .resources import describe
+    resource_plan = describe(cfg, profile, selected if profile == "wan" or selected.get("gpu_inference") else None, root)
+    minimum = resource_plan["minimum_free_ram_gib"]
+    ram_short = mem["free_ram_gib"] < minimum
+    ram_only = ram_short and not errors
+    if ram_short:
         errors.append(f'현재 여유 RAM {mem["free_ram_gib"]}GiB, 실행 보호 기준 {minimum}GiB 미달입니다.')
     free_disk = round(shutil.disk_usage(root if root.exists() else Path(root.anchor)).free / 2**30, 2)
     if free_disk < 1:
         errors.append("선택한 SSD의 여유 공간이 1GB 미만입니다.")
+        ram_only = False
     quality_status, quality_ready = quality_validation(profile, root)
-    return {"ready": not errors, "ready_for_generation": not errors and quality_ready,
+    return {"ready": not errors, "ready_for_generation": not errors and quality_ready, "quality_ready": quality_ready,
             "quality_status": quality_status,
             "quality_report": str(APP / "docs" / "VALIDATION.md"),
             "model_selection_report": str(APP / "docs" / "MODEL_SELECTION.md"),
             "backend": cfg["backend"], "device_plan": selected, "model_profile": profile, "model_license": lock["model_license"], "threads": cfg["threads"], "runtime_dir": str(root),
             **mem, "free_disk_gib": free_disk, "model_download_gib": round(sum(x["size"] for x in lock["files"]) / 2**30, 2),
-            "minimum_free_ram_gib": minimum, "memory_threshold_is": "conservative_project_policy_not_official_minimum",
+            "minimum_free_ram_gib": minimum, "memory_threshold_is": "adaptive_project_policy_not_official_minimum",
+            "resource_plan": resource_plan, "ram_shortfall_only": ram_only,
             "model_files": model_files, "errors": errors, "target_iris_generation_verified": False,
             "model_profiles": [profile_availability(root, name, model_files if name == profile else None) for name in sorted(PROFILES)],
             "construction": construction_validation(root) if profile == "neodragon" else None,
@@ -418,9 +432,10 @@ def normalize(value):
             "diagnostic": diagnostic,
             "model_profile": profile, "_model_spec": spec,
             "model_revision": hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest(),
-            "backend": backend, "device_plan": selected, "threads": min(cfg["threads"], 4) if profile == "neodragon" else cfg["threads"], "reserve_ram_gib": cfg["reserve_ram_gib"],
-            "minimum_free_ram_gib": max(cfg["minimum_free_ram_gib"], selected.get("minimum_free_ram_gib", 3.0)),
-            "maximum_working_set_gib": cfg["maximum_working_set_gib"], "_runtime_dir": str(root)}
+            "backend": backend, "device_plan": selected, "threads": cfg["threads"],
+            **{key: cfg.get(key, "auto") for key in RESOURCE_KEYS},
+            "minimum_free_ram_gib": "auto" if cfg.get("minimum_free_ram_gib", "auto") == "auto" else max(cfg["minimum_free_ram_gib"], selected.get("minimum_free_ram_gib", 3.0)),
+            "_runtime_dir": str(root)}
 
 def job_path(job_id):
     if not isinstance(job_id, str) or not re.fullmatch(r"[0-9a-f]{12}", job_id):
@@ -503,6 +518,13 @@ def _indexed_request(root, digest):
         return None
 
 
+def _require_startable(check, diagnostic):
+    # A job blocked only by RAM is queued; the worker waits for this computer's RAM to recover.
+    if not check["ready"] and not check.get("ram_shortfall_only"):
+        raise RuntimeError("생성 준비 미완료: " + "; ".join(check["errors"]))
+    if not diagnostic and not check.get("quality_ready", check.get("ready_for_generation", False)):
+        raise RuntimeError("영상 품질 검증이 실패했거나 아직 완료되지 않았습니다. 제작 작업을 시작하지 않았습니다.")
+
 def submit(value):
     request = normalize(value)
     _, root = load_config()
@@ -511,10 +533,7 @@ def submit(value):
     if not request["diagnostic"]:
         # Production readiness is checked before reusing an earlier job too.
         check = doctor(profile=request["model_profile"])
-        if not check["ready"]:
-            raise RuntimeError("생성 준비 미완료: " + "; ".join(check["errors"]))
-        if not check.get("ready_for_generation", False):
-            raise RuntimeError("영상 품질 검증이 실패했거나 아직 완료되지 않았습니다. 제작 작업을 시작하지 않았습니다.")
+        _require_startable(check, False)
     digest = hashlib.sha256(json.dumps(request, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     jobs = runtime_path(root, "jobs")
     reused = _indexed_request(root, digest)
@@ -527,10 +546,7 @@ def submit(value):
                 _remember_request(root, digest, reused["job_id"])
                 return reused
     check = check or doctor(profile=request["model_profile"])
-    if not check["ready"]:
-        raise RuntimeError("생성 준비 미완료: " + "; ".join(check["errors"]))
-    if not request["diagnostic"] and not check.get("ready_for_generation", False):
-        raise RuntimeError("영상 품질 검증이 실패했거나 아직 완료되지 않았습니다. 제작 작업을 시작하지 않았습니다.")
+    _require_startable(check, request["diagnostic"])
     jobs.mkdir(parents=True, exist_ok=True)
     pending = [p for p in jobs.glob("*/status.json") if read_json(p).get("state") in {"queued", "running"}]
     if len(pending) >= 12:
@@ -539,7 +555,10 @@ def submit(value):
     job = job_path(jid)
     job.mkdir()
     write_json(job / "request.json", request)
-    initial = {"job_id": jid, "state": "queued", "stage": "waiting_for_local_engine", "request_hash": digest, "created_at": time.time()}
+    initial = {"job_id": jid, "state": "queued", "stage": "waiting_for_memory" if check.get("ram_shortfall_only") else "waiting_for_local_engine",
+               "request_hash": digest, "created_at": time.time()}
+    if check.get("ram_shortfall_only"):
+        initial.update(free_ram_gib=check["free_ram_gib"], needed_free_ram_gib=check["minimum_free_ram_gib"])
     write_json(job / "status.json", initial)
     env = os.environ.copy()
     temporary = runtime_path(root, "tmp")
@@ -607,6 +626,10 @@ def worker(job_id):
             raise InterruptedError("취소됐습니다.")
         request = read_json(job / "request.json")
         check = doctor(profile=request["model_profile"])
+        if not check["ready"] and check.get("ram_shortfall_only"):
+            from local_video.resources import wait_for_memory
+            wait_for_memory(check["minimum_free_ram_gib"], cancelled, progress)
+            check = doctor(profile=request["model_profile"])
         if not check["ready"]:
             raise RuntimeError("실행 직전 자원 확인 실패: " + "; ".join(check["errors"]))
         if not request.get("diagnostic", False) and not check.get("ready_for_generation", False):
@@ -619,7 +642,18 @@ def worker(job_id):
             from local_video.neodragon import generate_project
         else:
             from local_video.backend import generate_project
-        result = generate_project(request, runtime_path(root, "jobs", job_id, "output"), runtime_path(root, "cache", "shots"), runtime_path(root, "models"), progress, cancelled)
+        from local_video.resources import stage_limits, start_requirement_gib, wait_for_memory
+        for attempt in range(MEMORY_RETRIES + 1):
+            try:
+                result = generate_project(request, runtime_path(root, "jobs", job_id, "output"), runtime_path(root, "cache", "shots"), runtime_path(root, "models"), progress, cancelled)
+                break
+            except MemoryError as exc:
+                # Finished scenes are cached, so a retry resumes at the scene that ran short.
+                if attempt == MEMORY_RETRIES or cancelled():
+                    raise
+                progress({"stage": "waiting_for_memory", "memory_retry": attempt + 1, "memory_error": str(exc)[:300]})
+                wait_for_memory(start_requirement_gib(root, None, stage_limits(request)), cancelled, progress)
+                progress({"stage": "loading", "memory_retry": attempt + 1})
         if cancelled():
             raise InterruptedError("취소됐습니다.")
         result.update(domain=request.get("domain", "general"), production_realism_verified=False)

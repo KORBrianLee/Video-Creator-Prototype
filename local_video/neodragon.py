@@ -137,7 +137,7 @@ def first_frame(root, work, scene, settings, request, progress, is_cancelled):
                "--clip-on-cpu", "--vae-on-cpu", "--vae-tiling", "--vae-tile-size", "256x256"]
     media._validate_flags(command, help_text)
     media._write_json(work / "first-frame-command.json", {"argv": command, "engine_identity": identity})
-    result = media._infer(command, work, request, progress, is_cancelled, 1, 1, 20)
+    result = media._infer(command, work, request, progress, is_cancelled, 1, 1, 20, stage_name="first_frame")
     with Image.open(work / "first-frame.png") as image:
         if image.size != (settings["width"], settings["height"]):
             raise RuntimeError("첫 장면 해상도가 요청과 다릅니다.")
@@ -168,12 +168,16 @@ def run_stage(root, work, name, request, progress, is_cancelled):
             media._write_json(work / (name + ".metrics.json"), record)
             return record
     _, free = media._memory(os.getpid())
-    minimum = max(3.0, request.get("minimum_free_ram_gib", 3.0))
+    from .resources import PressureGuard, record_drop, stage_limits, start_requirement_gib
+    limits = stage_limits(request, "neodragon")
+    minimum = start_requirement_gib(root, name, limits)
+    start_free = free
     if free < minimum * 2**30:
-        raise RuntimeError(f"단계 {name}: 여유 RAM {free/2**30:.2f}GiB, 시작 기준 {minimum}GiB 미달입니다.")
+        raise MemoryError(f"단계 {name}: 여유 RAM {free/2**30:.2f}GiB, 시작 기준 {minimum}GiB 미달입니다.")
     conversion = name == "video_pack"
-    cap = 6.5 if conversion else request.get("maximum_working_set_gib", 5.0)
-    reserve = max(1.0, request.get("reserve_ram_gib", 1.0))
+    cap = max(6.5, limits["maximum_working_set_gib"]) if conversion else limits["maximum_working_set_gib"]
+    reserve = limits["reserve_ram_gib"]
+    guard = PressureGuard(reserve * 2**30)
     if conversion:
         packed = root / "models" / "experimental-neodragon" / "derived" / "transformer-cpu-int8-v2.pt"
         if shutil.disk_usage(root).free < 3 * 2**30:
@@ -185,7 +189,7 @@ def run_stage(root, work, name, request, progress, is_cancelled):
     flags = (subprocess.CREATE_NO_WINDOW | subprocess.BELOW_NORMAL_PRIORITY_CLASS) if os.name == "nt" else 0
     record = {"name": name, "state": "running", "peak_working_set_bytes": 0,
               "minimum_system_free_bytes": free, "working_set_limit_gib": cap,
-              "one_time_conversion": conversion}
+              "reserve_ram_gib": reserve, "one_time_conversion": conversion}
     started = heartbeat = time.monotonic()
     process = None
     try:
@@ -199,16 +203,18 @@ def run_stage(root, work, name, request, progress, is_cancelled):
             while process.poll() is None:
                 media._cancel(is_cancelled)
                 working, free = media._memory(process.pid)
+                reclaimable = media._reclaimable(process.pid, working)
                 record["peak_working_set_bytes"] = max(record["peak_working_set_bytes"], working)
-                record["minimum_system_free_bytes"] = min(record["minimum_system_free_bytes"], free)
-                if working > cap * 2**30 or free < reserve * 2**30:
-                    raise RuntimeError(f"단계 {name}가 RAM 보호 기준을 넘었습니다. 이 작업만 중지했습니다.")
+                record["minimum_system_free_bytes"] = min(record["minimum_system_free_bytes"], free + reclaimable)
+                if working - reclaimable > cap * 2**30:
+                    raise MemoryError(f"단계 {name}의 작업 메모리가 상한 {cap}GiB를 넘었습니다. 이 작업만 중지했습니다.")
+                guard.check(free + reclaimable, time.monotonic())
                 if time.monotonic() - started > request.get("maximum_scene_seconds", 1800):
                     raise RuntimeError(f"단계 {name}가 실행 제한 시간을 넘었습니다.")
                 if time.monotonic() - heartbeat >= 15:
                     progress({"stage": name, "working_set_gib": round(working/2**30, 3),
                               "peak_working_set_gib": round(record["peak_working_set_bytes"]/2**30, 3),
-                              "free_ram_gib": round(free/2**30, 3),
+                              "free_ram_gib": round(free/2**30, 3), "reclaimable_mapped_gib": round(reclaimable/2**30, 3),
                               "scene_elapsed_seconds": round(time.monotonic()-started, 1)})
                     heartbeat = time.monotonic()
                 time.sleep(0.25)
@@ -217,7 +223,9 @@ def run_stage(root, work, name, request, progress, is_cancelled):
         record["state"] = "completed"
         if name == "video_infer" and request.get("device_plan", {}).get("gpu_inference"):
             gpu = json.loads((work / "opencl-metrics.json").read_text(encoding="utf-8"))
-            if gpu.get("kernel_calls", 0) < 1 or gpu.get("peak_explicit_gpu_buffer_bytes", 2**63) > 64 * 2**20:
+            from .resources import GPU_DISCRETE_CEILING
+            ceiling = min(gpu.get("buffer_ceiling_bytes", 0), GPU_DISCRETE_CEILING)
+            if gpu.get("kernel_calls", 0) < 1 or gpu.get("peak_explicit_gpu_buffer_bytes", 2**63) > ceiling:
                 raise RuntimeError("GPU 실행 또는 저메모리 버퍼 상한 증거를 확인하지 못했습니다.")
             record.update(gpu_inference=True, gpu=gpu)
         return record
@@ -227,6 +235,7 @@ def run_stage(root, work, name, request, progress, is_cancelled):
     finally:
         if process is not None:
             media._stop_owned(process)
+            record_drop(root, name, start_free, record["minimum_system_free_bytes"])
         record["elapsed_seconds"] = round(time.monotonic()-started, 3)
         media._write_json(work / (name + ".metrics.json"), record)
 
@@ -321,6 +330,8 @@ def generate_project(request, output_dir, cache_dir, model_dir, progress, is_can
             work.mkdir(parents=True)
             media._write_json(work / "request.json", {"prompt": scene["prompt"], "seed": scene["seed"],
                                                      "threads": request["threads"], "device_plan": selected,
+                                                     "gpu_buffer_mib": request.get("gpu_buffer_mib", "auto"),
+                                                     "reserve_ram_gib": request.get("reserve_ram_gib", "auto"),
                                                      "cpu_precision": request.get("cpu_precision", "int8"), **settings})
             if "prompt_modifier" in scene:
                 stage_request = json.loads((work / "request.json").read_text(encoding="utf-8"))

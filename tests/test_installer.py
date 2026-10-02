@@ -58,6 +58,19 @@ class DeploymentTests(unittest.TestCase):
         connection = json.loads((self.app / ".cursor" / "mcp.json").read_text(encoding="utf-8"))
         self.assertEqual(connection["mcpServers"]["local-video"]["env"]["CVL_RUNTIME_DIR"], str(self.root))
 
+    def test_old_fixed_defaults_become_adaptive_and_source_config_never_overwrites(self):
+        (self.source / "video.config.json").write_text(json.dumps({"backend": "auto", "threads": 4}), encoding="utf-8")
+        cfg = {"runtime_dir": str(self.root), "backend": "cpu", "threads": 4, "minimum_free_ram_gib": 3.0,
+               "reserve_ram_gib": 1.5, "maximum_working_set_gib": 5.0}
+        path = self.app / "video.config.json"
+        path.write_text(json.dumps(cfg), encoding="utf-8")
+        with patch.object(installer, "SOURCE", self.source):
+            installer.deploy(self.root)
+        saved = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(saved["backend"], "cpu")
+        for key in ["threads", "minimum_free_ram_gib", "reserve_ram_gib", "maximum_working_set_gib"]:
+            self.assertEqual(saved[key], "auto")
+
 
 if __name__ == "__main__":
     unittest.main()

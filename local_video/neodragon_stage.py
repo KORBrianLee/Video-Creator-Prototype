@@ -9,7 +9,7 @@ from installer import d_root, inside
 def stage(root, output, name):
     import torch
     from PIL import Image
-    torch.set_num_threads(min(4, max(1, json.loads((output / "request.json").read_text(encoding="utf-8")).get("threads", 4))))
+    torch.set_num_threads(min(8, max(1, json.loads((output / "request.json").read_text(encoding="utf-8")).get("threads", 4))))
     torch.set_num_interop_threads(1)
     torch.manual_seed(json.loads((output / "request.json").read_text(encoding="utf-8"))["seed"])
     assert torch.version.cuda is None, "Probe requires a CPU-only PyTorch wheel"
@@ -123,7 +123,9 @@ def stage(root, output, name):
             gpu_engine = None
             if request.get("device_plan", {}).get("gpu_inference"):
                 from local_video.opencl_linear import LinearEngine
-                gpu_engine = LinearEngine(request["device_plan"]["selected_device"]["id"])
+                gpu_engine = LinearEngine(request["device_plan"]["selected_device"]["id"],
+                                          buffer_mib=request.get("gpu_buffer_mib", "auto"),
+                                          reserve_gib=request.get("reserve_ram_gib", "auto"))
             if request.get("cpu_precision") == "bf16_stream":
                 dit = load_model(PyramidMMDiT, "diffusion_transformer_320p", torch.bfloat16)
                 count = stream_linears(dit, gpu_engine)

@@ -99,6 +99,7 @@ def inventory(with_handles=False):
                     "vendor": "intel" if "intel" in vendor else "nvidia" if "nvidia" in vendor else "amd" if any(x in vendor for x in ["amd", "advanced micro"]) else "other",
                     "shared_memory": shared, "kind": "integrated" if shared else "discrete",
                     "maximum_allocation_bytes": info(handle, 0x1010, B),
+                    "global_memory_bytes": info(handle, 0x101F, B),
                     "maximum_work_group_size": info(handle, 0x1004, S),
                     "driver": info(handle, 0x102D)}
             if with_handles:
@@ -126,14 +127,19 @@ def plan(backend="auto", requested_id=None):
         raise RuntimeError("GPU의 연산 블록 크기가 이 저메모리 경로를 지원하지 않습니다.")
     return {"gpu_inference": selected is not None, "backend_assignment": "linear=" + selected["id"] if selected else "cpu",
             "selected_device": selected, "minimum_free_ram_gib": 3.0,
-            "maximum_gpu_budget_gib": 0.0625 if selected else None,
+            "gpu_buffer_policy": "adaptive_per_stage" if selected else None,
             "policy": "one_mapped_bf16_matrix_at_a_time", "gpu_scope": "video_transformer_linear_layers_only",
             "target_iris_generation_verified": False}
 
 
 class LinearEngine:
-    """One sequential queue and at most 64 MiB of explicit GPU buffers."""
-    def __init__(self, requested_id, budget_bytes=64 * 2**20):
+    """One sequential queue; explicit GPU buffers sized to this computer.
+
+    The budget starts from free RAM (shared GPU) or VRAM (discrete GPU) and,
+    on shared memory, halves under RAM pressure and recovers when RAM returns.
+    """
+    def __init__(self, requested_id, buffer_mib="auto", reserve_gib="auto"):
+        from . import resources
         devices = inventory(with_handles=True)
         matches = [d for d in devices if d["id"] == requested_id]
         if not matches:
@@ -141,13 +147,18 @@ class LinearEngine:
         self.device = dict(matches[0])
         device = P(self.device.pop("handle"))
         self.dll, self.buffers, self.resources = api(), {}, []
-        self.budget = min(int(budget_bytes), 64 * 2**20)
-        if self.budget < 1:
-            raise ValueError("GPU 버퍼 예산은 양수여야 합니다.")
+        total, available = resources.memory_bytes()
+        self.reserve = (resources.reserve_gib(total) if resources.is_auto(reserve_gib) else float(reserve_gib)) * 2**30
+        self.ceiling = resources.gpu_buffer_bytes(self.device, total, available, resources.check_value("gpu_buffer_mib", buffer_mib))
+        self.floor = min(resources.GPU_FLOOR, self.ceiling)
+        self.step = resources.GPU_STEP
+        self.adaptive = resources.is_auto(buffer_mib) and self.device.get("shared_memory", True)
+        self.budget = self.ceiling
         self.calls, self.uploaded, self.peak, self.seconds = 0, 0, 0, 0.0
         self.allocations, self.reuses, self.releases = 0, 0, 0
         self.linear_calls = 0
         self.working_set_trims = 0
+        self.shrinks, self.grows, self.lowest_budget = 0, 0, self.budget
         error = I()
         try:
             self.context = self.dll.clCreateContext(None, 1, C.byref(device), None, None, C.byref(error))
@@ -230,6 +241,9 @@ class LinearEngine:
         bias_values = np.zeros(1, dtype=np.float32) if bias is None else np.ascontiguousarray(bias, dtype=np.float32)
         if bias is not None and bias_values.shape != (n,):
             raise ValueError("GPU bias 크기가 일치하지 않습니다.")
+        needed = weight_bits.nbytes + bias_values.nbytes + 4 * (k + n)
+        if needed > self.budget and needed <= self.ceiling:
+            self.budget = min(self.ceiling, -(-needed // self.step) * self.step)
         remaining = self.budget - weight_bits.nbytes - bias_values.nbytes
         rows = min(m, remaining // (4 * (k + n)), self.device["maximum_allocation_bytes"] // (4 * max(k, n)))
         if rows < 1:
@@ -256,25 +270,39 @@ class LinearEngine:
             self.calls += 1
         self.seconds += time.monotonic() - start
         self.linear_calls += 1
+        self.adapt()
+        return result
+
+    def adapt(self):
+        from .backend import _memory
+        working, available = _memory(os.getpid())
+        pressure = available < self.reserve + 1.0 * 2**30
+        if self.adaptive:
+            if pressure and self.budget > self.floor:
+                self.budget = max(self.floor, self.budget // 2 // self.step * self.step)
+                self.shrinks += 1
+                self.lowest_budget = min(self.lowest_budget, self.budget)
+            elif available > self.reserve + 3.0 * 2**30 and self.budget < self.ceiling:
+                self.budget = min(self.ceiling, self.budget * 2)
+                self.grows += 1
         # Mapped BF16 pages accumulate in the working set as layers are read.
         # Under RAM pressure, let Windows reclaim this owned process's pages;
         # the next matrix can be read again from the selected SSD mapping.
-        from .backend import _memory
-        working, available = _memory(os.getpid())
-        if available < 2.5 * 2**30 and working > 1.0 * 2**30:
+        if pressure and working > 1.0 * 2**30:
             kernel, psapi = C.WinDLL("kernel32"), C.WinDLL("psapi")
             kernel.GetCurrentProcess.restype = P
             psapi.EmptyWorkingSet.argtypes, psapi.EmptyWorkingSet.restype = [P], I
             if psapi.EmptyWorkingSet(kernel.GetCurrentProcess()):
                 self.working_set_trims += 1
-        return result
 
     def metrics(self):
         return {"device": self.device, "kernel_calls": self.calls, "uploaded_bytes": self.uploaded,
                 "linear_calls": self.linear_calls, "buffer_allocations": self.allocations,
                 "buffer_reuses": self.reuses, "buffer_releases": self.releases,
-                "buffer_policy": "reuse_capacity_overwrite_every_tensor_within_fixed_cap",
+                "buffer_policy": "reuse_capacity_overwrite_every_tensor_within_adaptive_cap" if self.adaptive else "reuse_capacity_overwrite_every_tensor_within_fixed_cap",
                 "peak_explicit_gpu_buffer_bytes": self.peak, "buffer_limit_bytes": self.budget,
+                "buffer_ceiling_bytes": self.ceiling, "buffer_lowest_bytes": self.lowest_budget,
+                "buffer_shrinks": self.shrinks, "buffer_grows": self.grows,
                 "linear_elapsed_seconds": round(self.seconds, 3), "gpu_scope": "video_transformer_linear_layers_only",
                 "owned_process_working_set_trims": self.working_set_trims,
                 "total_driver_memory_measured": False, "target_iris_generation_verified": False}

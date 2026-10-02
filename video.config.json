@@ -2,8 +2,9 @@
   "runtime_dir": "C:\\CursorVideoRuntime",
   "backend": "auto",
   "model_profile": "neodragon",
-  "threads": 4,
-  "minimum_free_ram_gib": 3.0,
-  "reserve_ram_gib": 1.5,
-  "maximum_working_set_gib": 5.0
+  "threads": "auto",
+  "minimum_free_ram_gib": "auto",
+  "reserve_ram_gib": "auto",
+  "maximum_working_set_gib": "auto",
+  "gpu_buffer_mib": "auto"
 }

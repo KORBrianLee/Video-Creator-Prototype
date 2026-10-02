@@ -82,6 +82,11 @@ def inside(root, *parts):
         raise ValueError("설치 경로가 선택한 실행 폴더 밖으로 연결됩니다.")
     return target
 
+ADAPTIVE_DEFAULTS = {"threads": "auto", "minimum_free_ram_gib": "auto", "reserve_ram_gib": "auto",
+                     "maximum_working_set_gib": "auto", "gpu_buffer_mib": "auto"}
+FIXED_DEFAULTS = {"threads": 4, "minimum_free_ram_gib": 3.0, "reserve_ram_gib": (1.0, 1.5),
+                  "maximum_working_set_gib": 5.0, "gpu_buffer_mib": "auto"}
+
 def deploy(root, profile=None):
     target = inside(root, "app")
     target.mkdir(parents=True, exist_ok=True)
@@ -89,18 +94,25 @@ def deploy(root, profile=None):
     for item in SOURCE.iterdir():
         if item.resolve() == (target / item.name).resolve():
             continue
+        if item.name in {"video.config.json", "runtime-dir.txt"} and (target / item.name).exists():
+            continue
         if item.is_file() and (item.suffix in {".py", ".json", ".md", ".txt", ".cmd", ".ps1"} or item.name == "LICENSE"):
             shutil.copy2(item, inside(root, "app", item.name))
         elif item.is_dir() and item.name in allow:
             shutil.copytree(item, inside(root, "app", item.name), dirs_exist_ok=True, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
-    cfg = {"runtime_dir": str(root), "backend": "auto", "model_profile": profile or "neodragon", "threads": 4, "minimum_free_ram_gib": 3.0, "reserve_ram_gib": 1.5, "maximum_working_set_gib": 5.0}
+    cfg = {"runtime_dir": str(root), "backend": "auto", "model_profile": profile or "neodragon", **ADAPTIVE_DEFAULTS}
     if not (target / "video.config.json").exists():
         (target / "video.config.json").write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
     else:
         saved = json.loads((target / "video.config.json").read_text(encoding="utf-8-sig"))
-        if saved.get("runtime_dir") != str(root):
-            saved["runtime_dir"] = str(root)
-            (target / "video.config.json").write_text(json.dumps(saved, ensure_ascii=False, indent=2), encoding="utf-8")
+        updated = {**saved, "runtime_dir": str(root)}
+        # Fixed values written by releases before 0.7.3 become adaptive; user-chosen numbers stay.
+        for key, old in FIXED_DEFAULTS.items():
+            value = updated.get(key, "auto")
+            if value in (old if isinstance(old, tuple) else (old,)):
+                updated[key] = "auto"
+        if updated != saved:
+            (target / "video.config.json").write_text(json.dumps(updated, ensure_ascii=False, indent=2), encoding="utf-8")
     python = root / "runtime" / "python" / "python.exe"
     cursor = target / ".cursor"
     cursor.mkdir(exist_ok=True)
@@ -114,22 +126,77 @@ def deploy(root, profile=None):
     pending.replace(path)
     print(json.dumps({"project": str(target), "cursor_config": str(cursor / "mcp.json")}, ensure_ascii=False), flush=True)
 
+PROFILE_LOCKS = {"neodragon": "neodragon.lock.json", "lightning": "lightning.lock.json", "wan": "models.lock.json"}
+SITE_LOCK = "site-data.lock.json"
+
+def install_locks(profile):
+    names = ["runtime.lock.json", "models.lock.json", PROFILE_LOCKS[profile]]
+    if profile == "neodragon":
+        names += ["neodragon-research.lock.json", "neodragon-runtime.lock.json", "neodragon-safety.lock.json"]
+    return names
+
+def lock_digest(path):
+    try:
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return None
+    return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
+
+def installed_digests(root):
+    record = root / "audits" / "installed-locks.json"
+    if record.is_file():
+        return json.loads(record.read_text(encoding="utf-8"))
+    app = root / "app"
+    if app.resolve() == SOURCE or not app.is_dir():
+        return {}
+    # Installs made before this record existed: the previous deploy copied its locks into app.
+    return {path.name: lock_digest(path) for path in app.glob("*.lock.json")}
+
+def record_digests(root, names):
+    path = root / "audits" / "installed-locks.json"
+    saved = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    saved.update({name: lock_digest(SOURCE / name) for name in names})
+    path.write_text(json.dumps(saved, indent=2), encoding="utf-8")
+
+def prepare_site(root, baseline):
+    manifest = root / "datasets" / "construction-v1" / "manifest.json"
+    if manifest.is_file() and baseline.get(SITE_LOCK) == lock_digest(SOURCE / SITE_LOCK):
+        return
+    result = subprocess.run([sys.executable, "-B", str(SOURCE / "tools" / "prepare_site_data.py"), "--runtime-dir", str(root)])
+    if result.returncode == 0 and json.loads(manifest.read_text(encoding="utf-8")).get("state") == "references_prepared_weights_not_trained":
+        record_digests(root, [SITE_LOCK])
+    else:
+        print(json.dumps({"site_data": "not_prepared", "retry": "update.cmd"}, ensure_ascii=False), flush=True)
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("action", choices=["prepare", "models", "deploy", "all"])
+    parser.add_argument("action", choices=["prepare", "models", "deploy", "all", "update"])
     from local_video.storage import default_runtime
     parser.add_argument("--runtime-dir", default=default_runtime())
     parser.add_argument("--with-vulkan", action="store_true")
     parser.add_argument("--backend", choices=["auto", "gpu", "intel-gpu", "intel-vulkan", "cpu"])
-    parser.add_argument("--profile", choices=["neodragon", "lightning", "wan"], default="neodragon")
+    parser.add_argument("--profile", choices=["neodragon", "lightning", "wan"])
     args = parser.parse_args()
     root = d_root(args.runtime_dir)
+    if args.profile is None:
+        deployed = root / "app" / "video.config.json"
+        saved_profile = json.loads(deployed.read_text(encoding="utf-8-sig")).get("model_profile") if deployed.is_file() else None
+        args.profile = saved_profile if saved_profile in PROFILE_LOCKS else "neodragon"
+    baseline = installed_digests(root)
+    if args.action == "update":
+        stale = [name for name in install_locks(args.profile) if baseline.get(name) != lock_digest(SOURCE / name)]
+        print(json.dumps({"update": "full_verify" if stale else "code_only", "changed_locks": stale}), flush=True)
+        args.action = "all" if stale else "deploy"
+        args.with_vulkan = True
+        verified = not stale
+    else:
+        verified = False
     root.mkdir(parents=True, exist_ok=True)
     for name in ["tmp", "downloads", "models", "cache", "jobs", "audits"]:
         inside(root, name).mkdir(exist_ok=True)
     os.environ.update(TMP=str(root / "tmp"), TEMP=str(root / "tmp"), PIP_CACHE_DIR=str(root / "cache" / "pip"), PYTHONDONTWRITEBYTECODE="1")
     lock = json.loads((SOURCE / "models.lock.json").read_text(encoding="utf-8"))
-    lock_file = {"neodragon": "neodragon.lock.json", "lightning": "lightning.lock.json", "wan": "models.lock.json"}[args.profile]
+    lock_file = PROFILE_LOCKS[args.profile]
     model_lock = json.loads((SOURCE / lock_file).read_text(encoding="utf-8"))
     if args.action in {"prepare", "all"}:
         archive = root / "downloads" / "python-3.12.10-embed-amd64.zip"
@@ -188,14 +255,17 @@ def main():
         selected = plan(config.get("backend", "auto"), config.get("gpu_device"))
         if selected["gpu_inference"]:
             print(json.dumps({"int8_conversion": "not_required", "reason": "GPU streams original BF16 matrices without creating a full INT8 copy"}), flush=True)
-            return
-        from local_video.neodragon import run_stage
-        work = inside(root, "tmp", "neodragon-prepare-int8")
-        work.mkdir(parents=True, exist_ok=True)
-        (work / "request.json").write_text(json.dumps({"prompt": "", "width": 512, "height": 320, "frames": 49, "seed": 42, "threads": 4}), encoding="utf-8")
-        request = {"threads": 4, "maximum_working_set_gib": 5.0, "reserve_ram_gib": 1.0, "minimum_free_ram_gib": 3.0}
-        result = run_stage(root, work, "video_pack", request, lambda update: print(json.dumps(update), flush=True), lambda: False)
-        (root / "audits" / "neodragon-int8-setup.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+        else:
+            from local_video.neodragon import run_stage
+            work = inside(root, "tmp", "neodragon-prepare-int8")
+            work.mkdir(parents=True, exist_ok=True)
+            (work / "request.json").write_text(json.dumps({"prompt": "", "width": 512, "height": 320, "frames": 49, "seed": 42, "threads": 4}), encoding="utf-8")
+            request = {"threads": 4}
+            result = run_stage(root, work, "video_pack", request, lambda update: print(json.dumps(update), flush=True), lambda: False)
+            (root / "audits" / "neodragon-int8-setup.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+    if args.action == "all" or verified:
+        record_digests(root, install_locks(args.profile))
+        prepare_site(root, baseline)
 
 if __name__ == "__main__":
     main()

@@ -92,6 +92,39 @@ def _memory(process_id: int) -> tuple[int, int]:
         kernel.CloseHandle(handle)
 
 
+def _reclaimable(process_id: int, working: int) -> int:
+    """Lower bound of the working set Windows can drop without pagefile writes.
+
+    Memory-mapped model pages are file-backed: under pressure they are discarded
+    and re-read, unlike private memory, which would be written to the pagefile.
+    """
+    if os.name != "nt" or working <= 0:
+        return 0
+    class Counters(ctypes.Structure):
+        _fields_ = [("cb", ctypes.c_ulong), ("faults", ctypes.c_ulong),
+                    ("peak", ctypes.c_size_t), ("working", ctypes.c_size_t),
+                    ("peak_page", ctypes.c_size_t), ("page", ctypes.c_size_t),
+                    ("peak_nonpage", ctypes.c_size_t), ("nonpage", ctypes.c_size_t),
+                    ("pagefile", ctypes.c_size_t), ("peak_pagefile", ctypes.c_size_t)]
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.OpenProcess.argtypes = [ctypes.c_ulong, ctypes.c_int, ctypes.c_ulong]
+    kernel.OpenProcess.restype = ctypes.c_void_p
+    kernel.CloseHandle.argtypes = [ctypes.c_void_p]
+    handle = kernel.OpenProcess(0x1000 | 0x0010, False, process_id)
+    if not handle:
+        return 0
+    try:
+        counters = Counters()
+        counters.cb = ctypes.sizeof(counters)
+        psapi = ctypes.WinDLL("psapi", use_last_error=True)
+        psapi.GetProcessMemoryInfo.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_ulong]
+        if not psapi.GetProcessMemoryInfo(handle, ctypes.byref(counters), counters.cb):
+            return 0
+        return max(0, working - counters.pagefile)
+    finally:
+        kernel.CloseHandle(handle)
+
+
 def _stop_owned(process: subprocess.Popen) -> None:
     if process.poll() is None:
         process.terminate()
@@ -228,15 +261,24 @@ def _validate_flags(command: list[str], help_text: str) -> None:
 
 
 def _infer(command: list[str], work: Path, request: dict, progress: Callable,
-           is_cancelled: Callable, scene_index: int, scene_count: int, steps: int) -> dict:
+           is_cancelled: Callable, scene_index: int, scene_count: int, steps: int,
+           stage_name: str = "inference") -> dict:
     _cancel(is_cancelled)
     env = os.environ.copy()
     runtime = Path(request["_runtime_dir"])
     temporary_root = _path_in_runtime(runtime / "tmp", runtime.resolve())
     env.update(TEMP=str(temporary_root), TMP=str(temporary_root), TMPDIR=str(temporary_root))
     temporary_root.mkdir(parents=True, exist_ok=True)
-    cap = float(request.get("maximum_working_set_gib", 5.0)) * 2**30
-    reserve = float(request.get("reserve_ram_gib", 1.0)) * 2**30
+    from .resources import PressureGuard, record_drop, stage_limits, start_requirement_gib
+    limits = stage_limits(request)
+    cap = limits["maximum_working_set_gib"] * 2**30
+    reserve = limits["reserve_ram_gib"] * 2**30
+    guard = PressureGuard(reserve)
+    _, start_free = _memory(os.getpid())
+    required = start_requirement_gib(runtime, stage_name, limits)
+    if start_free < required * 2**30:
+        raise MemoryError(f"{stage_name} 시작에 여유 RAM {required}GiB가 필요합니다. 현재 {start_free/2**30:.2f}GiB.")
+    lowest_free = start_free
     timeout = float(request.get("maximum_scene_seconds", 7200 if request.get("model_profile") == "wan" else 3600))
     if not all(math.isfinite(v) and v > 0 for v in (cap, reserve, timeout)):
         raise ValueError("메모리와 시간 보호 기준은 유한한 양수여야 합니다.")
@@ -250,12 +292,13 @@ def _infer(command: list[str], work: Path, request: dict, progress: Callable,
             while process.poll() is None:
                 _cancel(is_cancelled)
                 working, available = _memory(process.pid)
+                reclaimable = _reclaimable(process.pid, working)
                 peak = max(peak, working)
-                if working > cap:
+                lowest_free = min(lowest_free, available + reclaimable)
+                if working - reclaimable > cap:
                     raise MemoryError(f"추론 메모리 {working/2**30:.2f}GB가 작업 보호 기준 {cap/2**30:.2f}GB를 초과했습니다. 다른 앱을 닫거나 낮은 설정을 사용하세요.")
-                if available < reserve:
-                    raise MemoryError(f"시스템 여유 RAM이 보호 기준 {reserve/2**30:.2f}GB 미만입니다. 다른 앱을 닫고 재시도하세요.")
                 now = time.monotonic()
+                pressured = guard.check(available + reclaimable, now)
                 if now - started > timeout:
                     raise TimeoutError("장면 생성 시간 보호 기준을 넘었습니다. 완료된 장면 캐시는 유지됩니다.")
                 if now - last_progress >= 2:
@@ -271,7 +314,9 @@ def _infer(command: list[str], work: Path, request: dict, progress: Callable,
                     update = {"stage": stage, "scene_index": scene_index, "scene_count": scene_count,
                               "scene_elapsed_seconds": round(now-started, 1), "engine_pid": process.pid,
                               "working_set_gib": round(working/2**30, 3), "peak_working_set_gib": round(peak/2**30, 3),
-                              "free_ram_gib": round(available/2**30, 3), "inference_log_path": str(log_path)}
+                              "free_ram_gib": round(available/2**30, 3), "reclaimable_mapped_gib": round(reclaimable/2**30, 3),
+                              "memory_pressure": pressured,
+                              "inference_log_path": str(log_path)}
                     if matches and int(matches[-1][1]) == steps:
                         update.update(step=int(matches[-1][0]), steps=steps)
                     progress(update)
@@ -283,6 +328,7 @@ def _infer(command: list[str], work: Path, request: dict, progress: Callable,
             _cancel(is_cancelled)
         finally:
             _stop_owned(process)
+            record_drop(runtime, stage_name, start_free, lowest_free)
     return {"inference_seconds": round(time.monotonic()-started, 3),
             "peak_working_set_gib": round(peak/2**30, 3), "inference_log_path": str(log_path)}
 

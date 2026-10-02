@@ -194,14 +194,31 @@ class BackendTests(unittest.TestCase):
     def test_memory_cap_terminates_owned_inference_child(self):
         request = {"_runtime_dir": str(self.work), "maximum_working_set_gib": 0.1, "reserve_ram_gib": 0.05}
         before = time.monotonic()
-        with mock.patch.object(backend, "_memory", return_value=(1024**3, 8*1024**3)):
+        with mock.patch.object(backend, "_memory", return_value=(1024**3, 8*1024**3)), \
+             mock.patch.object(backend, "_reclaimable", return_value=0):
             with self.assertRaisesRegex(MemoryError, "작업 보호"):
                 backend._infer([sys.executable, "-c", "import time; time.sleep(60)"], self.work, request, lambda update: None, lambda: False, 1, 1, 4)
         self.assertLess(time.monotonic()-before, 5)
 
+    def test_mapped_model_pages_do_not_trip_memory_guards(self):
+        request = {"_runtime_dir": str(self.work), "maximum_working_set_gib": 5, "reserve_ram_gib": 1.4}
+        checks = 0
+        def cancel():
+            nonlocal checks
+            checks += 1
+            return checks >= 12
+        readings = iter([(20*1024**2, 6*1024**3)])
+        with mock.patch.object(backend, "_memory", side_effect=lambda pid: next(readings, (6*1024**3, int(0.9*1024**3)))), \
+             mock.patch.object(backend, "_reclaimable", return_value=4*1024**3):
+            with self.assertRaises(InterruptedError):
+                backend._infer([sys.executable, "-c", "import time; time.sleep(60)"], self.work, request, lambda update: None, cancel, 1, 1, 4)
+        from local_video.resources import learned_drops
+        self.assertAlmostEqual(learned_drops(self.work)["inference"], 1.1, delta=0.05)
+
     def test_system_reserve_terminates_owned_inference_child(self):
         request = {"_runtime_dir": str(self.work), "maximum_working_set_gib": 5, "reserve_ram_gib": 1}
-        with mock.patch.object(backend, "_memory", return_value=(20*1024**2, 100*1024**2)):
+        readings = iter([(20*1024**2, 8*1024**3)])
+        with mock.patch.object(backend, "_memory", side_effect=lambda pid: next(readings, (20*1024**2, 100*1024**2))):
             with self.assertRaisesRegex(MemoryError, "시스템 여유"):
                 backend._infer([sys.executable, "-c", "import time; time.sleep(60)"], self.work, request, lambda update: None, lambda: False, 1, 1, 4)
 

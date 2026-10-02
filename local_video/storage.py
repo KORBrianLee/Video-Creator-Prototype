@@ -19,4 +19,4 @@ def runtime_root(value):
 
 
 def default_runtime():
-    return str(Path.home() / "Documents" / "Codex" / "CursorVideoRuntime")
+    return r"C:\CursorVideoRuntime"

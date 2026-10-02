@@ -5,7 +5,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.dont_write_bytecode = True
 from local_video import control
-SERVER_INFO = {"name": "cursor-video-local", "version": "0.7.1"}
+SERVER_INFO = {"name": "cursor-video-local", "version": "0.7.3"}
 LEGACY_VERSIONS = {"2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"}
 MODERN_VERSION = "2026-07-28"
 SUPPORTED_VERSIONS = [MODERN_VERSION, *sorted(LEGACY_VERSIONS, reverse=True)]

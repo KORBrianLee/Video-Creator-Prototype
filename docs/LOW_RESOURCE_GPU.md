@@ -43,7 +43,7 @@ LTX-2의 19B/22B급과 Wan 14B를 RTX에서 실행할 수 있다는 이유로 �
 
 ## 저장과 전달
 
-현재는 C의 `Documents/Codex/CursorVideoRuntime`을 쓰며 원래 D 실행 폴더는 보존한다. 그램에서는 `setup.cmd -RuntimeDir D:\CursorVideoLocal` 또는 설정의 전용 D 폴더를 사용한다. 경로 탈출·다른 볼륨 junction·드라이브 루트·네트워크 경로를 거부한다. 자료·모델·캐시·임시 파일·결과는 선택한 폴더 안에 저장한다. Windows가 관리하는 GPU 드라이버 캐시와 시스템 페이지 파일까지 앱 폴더에 강제할 수 있는 것은 아니다.
+기본 실행 폴더는 `C:\CursorVideoRuntime`이며 원래 D 실행 폴더는 보존한다. 그램에서는 `setup.cmd -RuntimeDir D:\CursorVideoLocal` 또는 설정의 전용 D 폴더를 사용한다. 경로 탈출·다른 볼륨 junction·드라이브 루트·네트워크 경로를 거부한다. 자료·모델·캐시·임시 파일·결과는 선택한 폴더 안에 저장한다. Windows가 관리하는 GPU 드라이버 캐시와 시스템 페이지 파일까지 앱 폴더에 강제할 수 있는 것은 아니다.
 
 C 실행 폴더의 `.cursor/mcp.json`은 준비된 Python과 이 앱을 직접 연결한다. 새 리빌드 ZIP은 소스와 검토 샘플 묶음이고 모델/실행 라이브러리는 별도다. 라이선스·출처는 MODEL_LICENSES.md, 기존 현장 사진/영상의 CC BY 고지는 결과 ATTRIBUTION.md에 유지한다.
 

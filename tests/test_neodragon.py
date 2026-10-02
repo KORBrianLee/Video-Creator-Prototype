@@ -42,7 +42,7 @@ class NeoTests(unittest.TestCase):
     def test_insufficient_ram_never_starts_a_child(self):
         with patch.object(neo.media, "_memory", return_value=(0, 2*2**30)), \
                 patch.object(neo.subprocess, "Popen") as launch:
-            with self.assertRaisesRegex(RuntimeError, "시작 기준"):
+            with self.assertRaisesRegex(MemoryError, "시작 기준"):
                 neo.run_stage(self.root, self.work, "video_infer", self.request, lambda update: None, lambda: False)
         launch.assert_not_called()
 
@@ -72,7 +72,7 @@ class NeoTests(unittest.TestCase):
         untouched.write_bytes(b"previous output")
         with patch.object(neo.media, "_memory", side_effect=[(0, 8*2**30), (6*2**30, 8*2**30)]), \
                 patch.object(neo.subprocess, "Popen", return_value=process):
-            with self.assertRaisesRegex(RuntimeError, "RAM 보호"):
+            with self.assertRaisesRegex(MemoryError, "작업 메모리가 상한"):
                 neo.run_stage(self.root, self.work, "video_infer", self.request, lambda update: None, lambda: False)
         self.assertTrue(process.terminated)
         self.assertEqual(untouched.read_bytes(), b"previous output")

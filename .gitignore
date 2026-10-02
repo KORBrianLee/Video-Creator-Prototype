@@ -3,3 +3,4 @@ __pycache__/
 .pytest_cache/
 video-creator.config.json
 video-projects/
+runtime-dir.txt

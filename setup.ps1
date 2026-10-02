@@ -1,5 +1,5 @@
 ﻿param(
-    [string]$RuntimeDir = (Join-Path $env:USERPROFILE 'Documents\Codex\CursorVideoRuntime'),
+    [string]$RuntimeDir = 'C:\CursorVideoRuntime',
     [ValidateSet('wan', 'neodragon', 'lightning')][string]$Profile = 'neodragon',
     [ValidateSet('auto', 'gpu', 'intel-gpu', 'cpu')][string]$Backend = 'auto'
 )
@@ -38,4 +38,5 @@ if (-not (Test-Path -LiteralPath $taskPython -PathType Leaf)) {
 }
 & $taskPython -B (Join-Path $PSScriptRoot 'installer.py') all --runtime-dir $taskRuntime --profile $Profile --backend $Backend --with-vulkan
 if ($LASTEXITCODE -ne 0) { throw '설치가 완료되지 않았습니다. 같은 setup.cmd로 재시도할 수 있습니다.' }
+Set-Content -LiteralPath (Join-Path $PSScriptRoot 'runtime-dir.txt') -Value $taskRuntime -Encoding UTF8
 Write-Host "영상 환경 준비 완료. Cursor에서 $taskRuntime\app 폴더를 열고 video_doctor로 확인하세요."

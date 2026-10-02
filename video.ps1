@@ -1,6 +1,6 @@
 ﻿param([Parameter(ValueFromRemainingArguments=$true)][string[]]$VideoArguments)
 $ErrorActionPreference = 'Stop'
-$taskRuntime = Join-Path $env:USERPROFILE 'Documents\Codex\CursorVideoRuntime'
+$taskRuntime = 'C:\CursorVideoRuntime'
 $taskConfigPath = Join-Path $PSScriptRoot 'video.config.json'
 if (Test-Path -LiteralPath $taskConfigPath) {
     $taskRuntime = (Get-Content -LiteralPath $taskConfigPath -Raw | ConvertFrom-Json).runtime_dir
