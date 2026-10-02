@@ -1,0 +1,23 @@
+{
+  "python": {
+    "version": "3.12.10",
+    "filename": "python-3.12.10-embed-amd64.zip",
+    "url": "https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip",
+    "sha256": "4acbed6dd1c744b0376e3b1cf57ce906f9dc9e95e68824584c8099a63025a3c3",
+    "digest_provenance": "recorded_from_python_org_TLS_acquisition"
+  },
+  "wheels": [
+    {
+      "filename": "pillow-12.3.0-cp312-cp312-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/45/89/da2f7971a317f83d807fdd4065c0af40208e59e692cc43d315a71a0e96d1/pillow-12.3.0-cp312-cp312-win_amd64.whl",
+      "sha256": "a2b55dd6b2a4c4b7d87ffa56bdb33fdc5fdb9a462173861a7bc097f17d91cb09",
+      "size": 7227137
+    },
+    {
+      "filename": "imageio_ffmpeg-0.6.0-py3-none-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/2c/c6/fa760e12a2483469e2bf5058c5faff664acf66cadb4df2ad6205b016a73d/imageio_ffmpeg-0.6.0-py3-none-win_amd64.whl",
+      "sha256": "02fa47c83703c37df6bfe4896aab339013f62bf02c5ebf2dce6da56af04ffc0a",
+      "size": 31246824
+    }
+  ]
+}

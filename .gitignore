@@ -1,8 +1,5 @@
-assets/
-renders/
-video-projects/*
-!video-projects/demo/
-!video-projects/_template/
-video-creator.config.json
 __pycache__/
 *.pyc
+.pytest_cache/
+video-creator.config.json
+video-projects/

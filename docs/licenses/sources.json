@@ -1,0 +1,107 @@
+[
+  {
+    "File": "AnimateDiff-Lightning-LICENSE.md",
+    "Source": "https://huggingface.co/ByteDance/AnimateDiff-Lightning/resolve/027c893eec01df7330f5d4b733bc9485ee02e8b2/LICENSE.md",
+    "Bytes": 14349,
+    "SHA256": "9114c6dd32957cc8e6cca4bae7ba368a047cab1b95598b465f18a42976c70ee9",
+    "Acquired": "2026-10-01"
+  },
+  {
+    "File": "SD15-CreativeML-OpenRAIL-M-LICENSE.txt",
+    "Source": "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/LICENSE",
+    "Bytes": 14385,
+    "SHA256": "be351ebe7ac01bcdbb018639aadcfd38f136b7dc3f2a3d4d3a24db51d1b210ef",
+    "Acquired": "2026-10-01"
+  },
+  {
+    "File": "stable-diffusion.cpp-MIT-LICENSE.txt",
+    "Source": "https://raw.githubusercontent.com/leejet/stable-diffusion.cpp/3f8527a/LICENSE",
+    "Bytes": 1062,
+    "SHA256": "b53fa08f515cb5a6fff7b9fd8fcd0961a4b80df29d74372d25e1f9171aa042ee",
+    "Acquired": "2026-10-01"
+  },
+  {
+    "File": "Wan2.1-Apache-2.0-LICENSE.txt",
+    "Source": "https://raw.githubusercontent.com/Wan-Video/Wan2.1/main/LICENSE.txt",
+    "Bytes": 11357,
+    "SHA256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+    "Acquired": "2026-10-01"
+  },
+  {
+    "File": "imageio-ffmpeg-BSD-2-Clause-LICENSE.txt",
+    "Source": "https://raw.githubusercontent.com/imageio/imageio-ffmpeg/v0.6.0/LICENSE",
+    "Bytes": 1317,
+    "SHA256": "eca73421d0c905a92e952a553d4d58919c5a507c2c2c76e3c0cf9ba408c299e4",
+    "Acquired": "2026-10-01"
+  },
+  {
+    "File": "Pillow-LICENSE.txt",
+    "Source": "https://raw.githubusercontent.com/python-pillow/Pillow/12.3.0/LICENSE",
+    "Bytes": 1457,
+    "SHA256": "15181e7363dca9aed78b79bebebc7fde7f1814b8bd311ea3b87ae8ccadfc185b",
+    "Acquired": "2026-10-01"
+  },
+  {
+    "File": "FFmpeg-GPL-3.0-LICENSE.txt",
+    "Source": "https://raw.githubusercontent.com/FFmpeg/FFmpeg/n7.1/COPYING.GPLv3",
+    "Bytes": 35147,
+    "SHA256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+    "Acquired": "2026-10-01"
+  },
+  {
+    "File": "Python-3.12.10-LICENSE.txt",
+    "Source": "Installed Python 3.12.10 LICENSE.txt, from https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip",
+    "Bytes": 36874,
+    "SHA256": "e502c6b880ff58d614901495a9009c136539cd0b1e2a2abb8fc00b934c203419",
+    "Acquired": "2026-10-01"
+  },
+  {
+    "File": "ggml-MIT-LICENSE.txt",
+    "Source": "Installed stable-diffusion.cpp CPU release ggml.txt, master-929-3f8527a",
+    "Bytes": 1099,
+    "SHA256": "bcd8ec749126d45cb06737d0690295d73df4b6e7e194205bcf91190368f27285",
+    "Acquired": "2026-10-01"
+  },
+  {
+    "File": "stable-diffusion.cpp-runtime-LICENSE.txt",
+    "Source": "Installed stable-diffusion.cpp CPU release stable-diffusion.cpp.txt, master-929-3f8527a",
+    "Bytes": 1082,
+    "SHA256": "4e76049398df734a97db46f3bd4b5cbc460cb5f6bfaf737cdc3d6fbb8ab3de27",
+    "Acquired": "2026-10-01"
+  },
+  {
+    "File": "TAESD-MIT-LICENSE.txt",
+    "Source": "https://raw.githubusercontent.com/madebyollin/taesd/027d3ef404a04a141e60d5ec0fee149c2c8bdd74/LICENSE",
+    "Bytes": 1073,
+    "SHA256": "261497cf8e9ed613ed1fa5ddf48af32cdf50545b2ccd9edd7eacc91fb9255d6e",
+    "Acquired": "2026-10-01"
+  },
+  {
+    "File": "AnimateDiff-stock-Apache-2.0-LICENSE.txt",
+    "Source": "https://raw.githubusercontent.com/guoyww/AnimateDiff/e92bd5671ba62c0d774a32951453e328018b7c5b/LICENSE.txt",
+    "Bytes": 11357,
+    "SHA256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+    "Acquired": "2026-10-01"
+  },
+  {
+    "File": "stable-diffusion.cpp-diagnostic-841-MIT-LICENSE.txt",
+    "Source": "https://raw.githubusercontent.com/leejet/stable-diffusion.cpp/6b3edaaf32cc19e5bb2d819c788bd557eddc8eba/LICENSE",
+    "Bytes": 1062,
+    "SHA256": "b53fa08f515cb5a6fff7b9fd8fcd0961a4b80df29d74372d25e1f9171aa042ee",
+    "Acquired": "2026-10-01"
+  },
+  {
+    "File": "stable-diffusion.cpp-diagnostic-841-runtime-LICENSE.txt",
+    "Source": "Installed D:\\CursorVideoLocal\\engines\\diagnostic-841\\stable-diffusion.cpp.txt, official master-841-6b3edaa CPU release",
+    "Bytes": 1082,
+    "SHA256": "4e76049398df734a97db46f3bd4b5cbc460cb5f6bfaf737cdc3d6fbb8ab3de27",
+    "Acquired": "2026-10-01"
+  },
+  {
+    "File": "ggml-diagnostic-841-MIT-LICENSE.txt",
+    "Source": "Installed D:\\CursorVideoLocal\\engines\\diagnostic-841\\ggml.txt, official master-841-6b3edaa CPU release",
+    "Bytes": 1099,
+    "SHA256": "bcd8ec749126d45cb06737d0690295d73df4b6e7e194205bcf91190368f27285",
+    "Acquired": "2026-10-01"
+  }
+]

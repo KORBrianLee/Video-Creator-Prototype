@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "checked_on": "2026-10-01",
+  "model_id": "wan21-t2v-13b-q4",
+  "model_license": "Apache-2.0",
+  "upstream_model": "https://huggingface.co/Wan-AI/Wan2.1-T2V-1.3B",
+  "engine": {
+    "repository": "leejet/stable-diffusion.cpp",
+    "tag": "master-929-3f8527a",
+    "commit": "3f8527a",
+    "license": "MIT",
+    "cpu": {
+      "url": "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-929-3f8527a/sd-master-3f8527a-bin-win-cpu-x64.zip",
+      "size": 17486440,
+      "sha256": "5e7caca2080321b25a12c1fa4175cb7d953f2b182309f8f73bfc9c725231d26c"
+    },
+    "vulkan": {
+      "url": "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-929-3f8527a/sd-master-3f8527a-bin-win-vulkan-x64.zip",
+      "size": 30067605,
+      "sha256": "60e6850d650417409f18c2170ab5e27335db96da70cd3d1ad1e930bcffc2fd35"
+    }
+  },
+  "files": [
+    {
+      "role": "diffusion",
+      "repo": "calcuis/wan-1.3b-gguf",
+      "revision": "0652f175f44055eb60cca26dd7cd89c14abe22ce",
+      "source_file": "wan2.1_t2v_1.3b-q4_0.gguf",
+      "filename": "wan2.1_t2v_1.3b-q4_0.gguf",
+      "size": 916895968,
+      "sha256": "da5e578d3ca7ef377f8258a1dc9a6ab176c4d2de7595c5f78d62a234e2cf13ef",
+      "license": "Apache-2.0",
+      "provenance": "Third-party GGUF quantization of the official Wan model; not an official Wan checkpoint."
+    },
+    {
+      "role": "text_encoder",
+      "repo": "city96/umt5-xxl-encoder-gguf",
+      "revision": "b535255bee98c2b0a59ea7c0ae2dcd0c6657b3b7",
+      "source_file": "umt5-xxl-encoder-Q4_K_S.gguf",
+      "filename": "umt5-xxl-encoder-Q4_K_S.gguf",
+      "size": 3497596768,
+      "sha256": "4a3176f32fd70c0a335b4419fcbf8c86cc875e23498c0fc06f5b4aa0930889e0",
+      "license": "Apache-2.0",
+      "provenance": "Third-party quantization; upstream google/umt5-xxl is Apache-2.0."
+    },
+    {
+      "role": "vae",
+      "repo": "Comfy-Org/Wan_2.1_ComfyUI_repackaged",
+      "revision": "123acf1cc74bccbb9bfff8ac1ee72edc08c2341d",
+      "source_file": "split_files/vae/wan_2.1_vae.safetensors",
+      "filename": "wan_2.1_vae.safetensors",
+      "size": 253815318,
+      "sha256": "2fc39d31359a4b0a64f55876d8ff7fa8d780956ae2cb13463b0223e15148976b",
+      "license": "Apache-2.0",
+      "provenance": "Repackaged official Wan VAE, headless direct loading; ComfyUI is not used."
+    }
+  ]
+}

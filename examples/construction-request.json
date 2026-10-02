@@ -1,0 +1,11 @@
+{
+  "title": "굴착기와 작업자 연속 현장",
+  "script": "노란 굴착기가 자갈 위로 버킷을 천천히 내리고, 옆에 있는 작업자 두 명 중 한 명이 팔로 신호를 보낸다. 카메라는 같은 자리에서 현장을 계속 촬영한다.",
+  "site_template": "excavator_spotter",
+  "continuous": true,
+  "duration_seconds": 2,
+  "diagnostic": true,
+  "seed": 42,
+  "model_profile": "neodragon",
+  "preset": "preview"
+}

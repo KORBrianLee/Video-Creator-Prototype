@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "local-video": {
+      "command": "C:\\CursorVideoRuntime\\runtime\\python\\python.exe",
+      "args": [
+        "C:\\CursorVideoRuntime\\app\\mcp_server.py"
+      ],
+      "env": {
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONIOENCODING": "utf-8",
+        "CVL_RUNTIME_DIR": "C:\\CursorVideoRuntime",
+        "TEMP": "C:\\CursorVideoRuntime\\tmp",
+        "TMP": "C:\\CursorVideoRuntime\\tmp"
+      }
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "repo": "CompVis/stable-diffusion-safety-checker",
+  "revision": "cb41f3a270d63d454d385fc2e4f571c487c253c5",
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "a63c29ecba711d56bd9287fe89128ff35f5987252a368f2427cdfeea2c46185e",
+      "size": 5367
+    },
+    {
+      "path": "config.json",
+      "sha256": "c879a63ee73f528bc5ec148aaea487b2b165f6a785f9cb55b90e590ba7977e0e",
+      "size": 4549
+    },
+    {
+      "path": "preprocessor_config.json",
+      "sha256": "2a1da83b5e1032aaeef397552ddb408dca0d8cd1dc58f61bf6abf38d6f33a0a2",
+      "size": 342
+    },
+    {
+      "path": "pytorch_model.bin",
+      "sha256": "64b8393f1afd5a0c1ed2aa5f341fa7c08286839a48f3743162a76a2835c808bd",
+      "size": 1216067303
+    }
+  ]
+}

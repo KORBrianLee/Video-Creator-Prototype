@@ -1,0 +1,64 @@
+{
+  "state": "passed_cpu_visual_review",
+  "checked_at_utc": "2026-10-01T19:01:42.654036+00:00",
+  "pipeline_revision": "8693d10aaa7aed27b3edd11155a0ae31e14f6abb55e6f4914c53d54c2efdf701",
+  "model_revision": "42ca832b7c3368d2979560040d8144da931b3f42a1518f9ab397add68d76a9bf",
+  "video_relative_path": "examples/validated-beach.mp4",
+  "video_sha256": "a4893b7ad19abee229f951dfd75ff459c2e4d4dd25c57c2bec45fb0e9de28c22",
+  "evidence_job_id": "7342c862602e",
+  "first_image_source_job_id": "85c15a63555a",
+  "cpu_threads": 4,
+  "cuda_used": false,
+  "target_gram_verified": false,
+  "host_cpu": "Intel Core i9-13900HX",
+  "host_ram_gib": 31.78,
+  "elapsed_seconds_with_first_image_cache": 119.703,
+  "first_image_cold_seconds_observed": 175.109,
+  "peak_inference_working_set_bytes": 4236677120,
+  "verification": {
+    "decoded": true,
+    "frame_count": 49,
+    "fps": 24.0,
+    "width": 512,
+    "height": 320,
+    "duration_seconds": 2.0417,
+    "nonstatic": true,
+    "mean_adjacent_frame_luma_difference": 0.72806,
+    "maximum_adjacent_frame_luma_difference": 1.47396,
+    "changed_frame_pairs": 48,
+    "luma_range": [
+      22,
+      235
+    ],
+    "quality_judgment": "human_review_required_motion_signal_is_not_realism_or_quality_proof"
+  },
+  "visual_review": {
+    "reviewer": "Codex visual inspection of rebuilt sampled frames",
+    "scope": "one rebuilt simple beach and water-motion example",
+    "recognizable_scene": true,
+    "water_and_shoreline_change_visible": true,
+    "detail_preserved_compared_to_per_tensor_quantization": true,
+    "limitations": [
+      "Short and restrained motion",
+      "Texture and fine detail remain below Sora-like realism",
+      "Complex actions and character consistency not validated"
+    ]
+  },
+  "safety": {
+    "unsafe": false,
+    "flags": [
+      false,
+      false,
+      false
+    ]
+  },
+  "elapsed_seconds_with_first_image_and_conditioning_cache": 87.922,
+  "server_version": "0.5.0",
+  "optimization_benchmark_path": "D:\\CursorVideoLocal\\audits\\rebuild-benchmark.json",
+  "cold_warm_encoded_video_identical": true,
+  "text_seed_tensor_equality": {
+    "prompt_embeds": true,
+    "attention_mask": true,
+    "pooled_prompt_embeds": true
+  }
+}

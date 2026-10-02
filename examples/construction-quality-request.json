@@ -1,0 +1,11 @@
+{
+  "title": "실사 참고 현장 원본 정밀도 비교",
+  "script": "고가도로 아래에서 굴착기가 레일을 조금씩 들어 올리고 근처의 작업자들이 작은 손짓으로 움직임을 유도한다. 카메라는 같은 자리에서 계속 촬영한다.",
+  "site_template": "rail_lifting_crew",
+  "continuous": true,
+  "duration_seconds": 4,
+  "diagnostic": true,
+  "seed": 42,
+  "model_profile": "neodragon",
+  "preset": "quality"
+}

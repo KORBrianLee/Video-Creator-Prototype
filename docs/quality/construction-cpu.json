@@ -1,0 +1,244 @@
+{
+  "schema": 1,
+  "state": "failed_construction_realism_validation",
+  "production_ready": false,
+  "checked_at_utc": "2026-10-01T20:25:40.160109+00:00",
+  "server_version": "0.6.0",
+  "weights_finetuned": false,
+  "adaptation_method": "curated_prompts_and_licensed_initial_image_conditioning",
+  "pipeline_revision": "7cfb9b5894a44bf842e8bf0aa7f14a9ed9080650e856961d9f0cb1ed2a285a64",
+  "model_revision": "42ca832b7c3368d2979560040d8144da931b3f42a1518f9ab397add68d76a9bf",
+  "profile_revision": "bfeb3d45108cc7086262eb028110e8a0464e203ffb4a2806667ba324fa1a29f6",
+  "video_relative_path": "examples/site-draft.mp4",
+  "video_sha256": "7d83e7e70830c22514b11c5208c5d4570df6152bc18f1ea188597a67d81cbcc2",
+  "evidence_job_id": "e028d493206d",
+  "sample_is": "selected_experimental_draft_not_validated_production_video",
+  "settings": {
+    "width": 512,
+    "height": 320,
+    "frames": 49,
+    "fps": 24,
+    "steps": 3
+  },
+  "cpu_precision": "bf16_stream",
+  "selected_seed": 43,
+  "compared_seeds": [
+    42,
+    43,
+    44
+  ],
+  "elapsed_seconds": 104.25,
+  "peak_working_set_bytes": 4299268096,
+  "host_cpu": "Intel Core i9-13900HX",
+  "cpu_threads": 4,
+  "cuda_used": false,
+  "target_gram_verified": false,
+  "sora2_quality_verified": false,
+  "verification": {
+    "decoded": true,
+    "frame_count": 49,
+    "fps": 24.0,
+    "width": 512,
+    "height": 320,
+    "continuity": {
+      "state": "no_large_jump_hold_or_darkening_detected",
+      "possible_jump_frames": [],
+      "possible_hold_runs": [],
+      "possible_darkening": null,
+      "median_adjacent_luma_difference": 1.05686,
+      "jump_threshold": 12.0,
+      "limitations": "밝기 변화 검사이며 작업자 수·형태·관절·물리·미세 떨림이나 사실감을 판정하지 않습니다. 의도한 어두워짐도 검토 표시될 수 있습니다."
+    },
+    "duration_seconds": 2.0417,
+    "nonstatic": true,
+    "mean_adjacent_frame_luma_difference": 1.05172,
+    "maximum_adjacent_frame_luma_difference": 1.9197,
+    "changed_frame_pairs": 48,
+    "luma_range": [
+      0,
+      255
+    ],
+    "quality_judgment": "human_review_required_motion_signal_is_not_realism_or_quality_proof"
+  },
+  "visual_review": {
+    "reviewer": "Codex inspection of densely sampled generated frames",
+    "recognizable_site": true,
+    "visible_worker_motion": true,
+    "large_jump_signal": false,
+    "limits": [
+      "Camera pans despite fixed-camera instruction",
+      "Workers merge or lose anatomical detail",
+      "Requested machine/worker coordinated action not reliably followed",
+      "Four-second runs darken or deform",
+      "Eight-second site footage untested"
+    ],
+    "why_selected": "Seed 43 avoids the detected gradual blackout present in seeds 42 and 44, and avoids the conspicuous unrequested vehicle in seed 44. It still fails full realism criteria."
+  },
+  "reference_attributions": [
+    {
+      "sha256": "db3e97a34091767cdf7c200e7d04874ff18f5edcb64dcc3ac1bb5110a027cd07",
+      "author": "ŠJů, Wikimedia Commons",
+      "license": "CC BY 4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Rekonstrukce_smy%C4%8Dky_Florenc,_p%C5%99en%C3%A1%C5%A1en%C3%AD_koleje.webm",
+      "changes": "Frame extracted, resized and letterboxed; then conditioned a newly generated AI video; original audio omitted."
+    }
+  ],
+  "trials": [
+    {
+      "job_id": "ed39c39c4be8",
+      "frames": 97,
+      "seed": 42,
+      "precision": "int8",
+      "video_sha256": "0a52e6a5ef5d96fd5ee617907bada55b54dd55f9b670dd31dda6b91350092a61",
+      "elapsed_seconds": 347.219,
+      "peak_working_set_bytes": 4653584384,
+      "pipeline_revision": "3254afcd0339308a447d8dec065e4a885caa9cac9c802f51382b6228da0ef241",
+      "production_realism_passed": false,
+      "continuity": {
+        "state": "no_large_jump_or_long_hold_detected",
+        "possible_jump_frames": [],
+        "possible_hold_runs": [],
+        "median_adjacent_luma_difference": 0.68316,
+        "jump_threshold": 12.0,
+        "limitations": "밝기 차이 검사이며 작업자 수·형태·관절·물리·미세 떨림이나 사실감을 판정하지 않습니다."
+      }
+    },
+    {
+      "job_id": "7378d96307ec",
+      "frames": 97,
+      "seed": 42,
+      "precision": "int8",
+      "video_sha256": "ae6b9f141d0f6d04da63af3c61af31b401929d3aac179013bb459ead8e4c3319",
+      "elapsed_seconds": 171.484,
+      "peak_working_set_bytes": 4636606464,
+      "pipeline_revision": "4d67bfee07493db22d9db123581633bcee0338170d183681dee0a28f5970cfbf",
+      "production_realism_passed": false,
+      "continuity": {
+        "state": "no_large_jump_or_long_hold_detected",
+        "possible_jump_frames": [],
+        "possible_hold_runs": [],
+        "median_adjacent_luma_difference": 0.6454,
+        "jump_threshold": 12.0,
+        "limitations": "밝기 차이 검사이며 작업자 수·형태·관절·물리·미세 떨림이나 사실감을 판정하지 않습니다."
+      }
+    },
+    {
+      "job_id": "f87dc853f52d",
+      "frames": 97,
+      "seed": 42,
+      "precision": "bf16_stream",
+      "video_sha256": "45849a0b9b39d2c27608bb2c3aa294a7a102edd74a4cef17c15a852d8ffe2f86",
+      "elapsed_seconds": 164.25,
+      "peak_working_set_bytes": 4638359552,
+      "pipeline_revision": "265f49c07b036e363b1e2fcc219f7dcddd803024cf2aefeb9c32e9b6a5cae130",
+      "production_realism_passed": false,
+      "continuity": {
+        "state": "no_large_jump_or_long_hold_detected",
+        "possible_jump_frames": [],
+        "possible_hold_runs": [],
+        "median_adjacent_luma_difference": 0.70356,
+        "jump_threshold": 12.0,
+        "limitations": "밝기 차이 검사이며 작업자 수·형태·관절·물리·미세 떨림이나 사실감을 판정하지 않습니다."
+      }
+    },
+    {
+      "job_id": "b765cbc3b995",
+      "frames": 97,
+      "seed": 42,
+      "precision": "bf16_stream",
+      "video_sha256": "038cafda51743615259463aa50e545de512243a23587d23d33ea90eb45b9e394",
+      "elapsed_seconds": 193.828,
+      "peak_working_set_bytes": 4637335552,
+      "pipeline_revision": "7cfb9b5894a44bf842e8bf0aa7f14a9ed9080650e856961d9f0cb1ed2a285a64",
+      "production_realism_passed": false,
+      "continuity": {
+        "state": "review_required",
+        "possible_jump_frames": [],
+        "possible_hold_runs": [],
+        "possible_darkening": {
+          "start_mean_luma": 64.536,
+          "end_mean_luma": 13.051,
+          "end_start_ratio": 0.2022
+        },
+        "median_adjacent_luma_difference": 0.9974,
+        "jump_threshold": 12.0,
+        "limitations": "밝기 변화 검사이며 작업자 수·형태·관절·물리·미세 떨림이나 사실감을 판정하지 않습니다. 의도한 어두워짐도 검토 표시될 수 있습니다."
+      }
+    },
+    {
+      "job_id": "09ad8ca47c23",
+      "frames": 49,
+      "seed": 42,
+      "precision": "bf16_stream",
+      "video_sha256": "98d641a8a705172b9db3ce69d0b8df42d59b10139c39bae5b07a77085787a0bd",
+      "elapsed_seconds": 90.453,
+      "peak_working_set_bytes": 4252176384,
+      "pipeline_revision": "7cfb9b5894a44bf842e8bf0aa7f14a9ed9080650e856961d9f0cb1ed2a285a64",
+      "production_realism_passed": false,
+      "continuity": {
+        "state": "review_required",
+        "possible_jump_frames": [],
+        "possible_hold_runs": [],
+        "possible_darkening": {
+          "start_mean_luma": 64.503,
+          "end_mean_luma": 32.473,
+          "end_start_ratio": 0.5034
+        },
+        "median_adjacent_luma_difference": 1.73177,
+        "jump_threshold": 13.85417,
+        "limitations": "밝기 변화 검사이며 작업자 수·형태·관절·물리·미세 떨림이나 사실감을 판정하지 않습니다. 의도한 어두워짐도 검토 표시될 수 있습니다."
+      }
+    },
+    {
+      "job_id": "e028d493206d",
+      "frames": 49,
+      "seed": 43,
+      "precision": "bf16_stream",
+      "video_sha256": "7d83e7e70830c22514b11c5208c5d4570df6152bc18f1ea188597a67d81cbcc2",
+      "elapsed_seconds": 104.25,
+      "peak_working_set_bytes": 4299268096,
+      "pipeline_revision": "7cfb9b5894a44bf842e8bf0aa7f14a9ed9080650e856961d9f0cb1ed2a285a64",
+      "production_realism_passed": false,
+      "continuity": {
+        "state": "no_large_jump_hold_or_darkening_detected",
+        "possible_jump_frames": [],
+        "possible_hold_runs": [],
+        "possible_darkening": null,
+        "median_adjacent_luma_difference": 1.05686,
+        "jump_threshold": 12.0,
+        "limitations": "밝기 변화 검사이며 작업자 수·형태·관절·물리·미세 떨림이나 사실감을 판정하지 않습니다. 의도한 어두워짐도 검토 표시될 수 있습니다."
+      }
+    },
+    {
+      "job_id": "5c946a691f7f",
+      "frames": 49,
+      "seed": 44,
+      "precision": "bf16_stream",
+      "video_sha256": "f8184b2ade83213953433e99e187b619c9f351f5e8882ab0ede168334342de8d",
+      "elapsed_seconds": 104.281,
+      "peak_working_set_bytes": 4268363776,
+      "pipeline_revision": "7cfb9b5894a44bf842e8bf0aa7f14a9ed9080650e856961d9f0cb1ed2a285a64",
+      "production_realism_passed": false,
+      "continuity": {
+        "state": "review_required",
+        "possible_jump_frames": [],
+        "possible_hold_runs": [],
+        "possible_darkening": {
+          "start_mean_luma": 64.633,
+          "end_mean_luma": 33.427,
+          "end_start_ratio": 0.5172
+        },
+        "median_adjacent_luma_difference": 1.4707,
+        "jump_threshold": 12.0,
+        "limitations": "밝기 변화 검사이며 작업자 수·형태·관절·물리·미세 떨림이나 사실감을 판정하지 않습니다. 의도한 어두워짐도 검토 표시될 수 있습니다."
+      }
+    }
+  ],
+  "prepared_data": {
+    "assets": 3,
+    "reference_segments": 9,
+    "manifest": "datasets/construction-v1/manifest.json"
+  },
+  "weights_training_note": "No backpropagation, LoRA training, optimizer update, or finetuned checkpoint was produced."
+}

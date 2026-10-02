@@ -1,0 +1,74 @@
+{
+  "state": "passed_gpu_visual_review",
+  "scope": "general_beach_draft_only_not_construction_realism",
+  "pipeline_revision": "46cfc17b56ac3e53d0b2968bd40fa9f5d4cc9d2fab1a6eef473aedd9fbf6a594",
+  "model_revision": "42ca832b7c3368d2979560040d8144da931b3f42a1518f9ab397add68d76a9bf",
+  "validated_device_name": "NVIDIA GeForce RTX 4070 Laptop GPU",
+  "validated_driver": "610.74",
+  "video_relative_path": "examples/validated-gpu.mp4",
+  "video_sha256": "dfe528fb1afe195629dc56cffa3c1ebb382a25846df2d42464ee97c947af9295",
+  "job_id": "14e3474c6f1e",
+  "settings": {
+    "width": 384,
+    "height": 256,
+    "frames": 49,
+    "fps": 24,
+    "steps": 3
+  },
+  "elapsed_seconds": 130.078,
+  "maximum_phase_working_set_gib": 3.988,
+  "gpu": {
+    "device": {
+      "id": "OpenCL0",
+      "name": "NVIDIA GeForce RTX 4070 Laptop GPU",
+      "vendor": "nvidia",
+      "shared_memory": false,
+      "kind": "discrete",
+      "maximum_allocation_bytes": 2146304000,
+      "maximum_work_group_size": 1024,
+      "driver": "610.74"
+    },
+    "kernel_calls": 4590,
+    "uploaded_bytes": 64175270400,
+    "peak_explicit_gpu_buffer_bytes": 48390144,
+    "buffer_limit_bytes": 67108864,
+    "linear_elapsed_seconds": 44.152,
+    "gpu_scope": "video_transformer_linear_layers_only",
+    "owned_process_working_set_trims": 0,
+    "total_driver_memory_measured": false,
+    "target_iris_generation_verified": false
+  },
+  "safety": "passed_required_checker",
+  "decode": {
+    "decoded": true,
+    "frame_count": 49,
+    "fps": 24.0,
+    "width": 384,
+    "height": 256,
+    "continuity": {
+      "state": "no_large_jump_hold_or_darkening_detected",
+      "possible_jump_frames": [],
+      "possible_hold_runs": [],
+      "possible_darkening": null,
+      "median_adjacent_luma_difference": 0.69293,
+      "jump_threshold": 12.0,
+      "limitations": "밝기 변화 검사이며 작업자 수·형태·관절·물리·미세 떨림이나 사실감을 판정하지 않습니다. 의도한 어두워짐도 검토 표시될 수 있습니다."
+    },
+    "duration_seconds": 2.0417,
+    "nonstatic": true,
+    "mean_adjacent_frame_luma_difference": 0.68296,
+    "maximum_adjacent_frame_luma_difference": 1.45269,
+    "changed_frame_pairs": 48,
+    "luma_range": [
+      19,
+      230
+    ],
+    "quality_judgment": "human_review_required_motion_signal_is_not_realism_or_quality_proof"
+  },
+  "visual_review": "recognizable beach and moving white foam across sampled frames; no still-image substitution; limited soft detail",
+  "target_iris_generation_verified": false,
+  "sora2_quality_verified": false,
+  "weights_finetuned": false,
+  "speed_improvement_claimed": false,
+  "comparison_note": "prior CPU examples use different resolution/precision/cache states; not a controlled speed comparison"
+}

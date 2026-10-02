@@ -1,0 +1,9 @@
+{
+  "title": "파도가 바위에 부딪히는 짧은 장면",
+  "script": "고정된 카메라 앞에서 바닷물이 바위에 부딪히고 하얀 물보라가 흩어지는 실사 장면.",
+  "preset": "preview",
+  "seed": 42,
+  "scenes": [
+    {"id": "shore", "seed": 42, "prompt": "A realistic live action close-up of turquoise ocean waves continuously crashing against dark rocks, white sea spray scattering through the air, foam receding and another wave rolling in, fixed camera, natural daylight, coherent fluid motion."}
+  ]
+}

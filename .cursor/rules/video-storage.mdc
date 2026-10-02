@@ -1,16 +1,5 @@
 ---
-description: Where all video-generation files are stored (D drive, never C)
+description: Low-resource Cursor video generation and selected SSD boundaries
 alwaysApply: true
 ---
-
-# Video file storage
-
-All files produced while making videos (generated images, storyboards, keyframes, temp files, rendered MP4s) go in the Video Creator storage folder, which is on the D drive by default (`D:\VideoCreator`). Do not leave video work on the C drive. The C drive may be a slow external/USB system drive, so rendering, scratch files and benchmark outputs must all run on D.
-
-- Read the folder once per task: `python <path-to>/vc_config.py --show` and use `storage_dir`.
-- Layout: `projects/<slug>/storyboard.json`, `assets/`, `renders/`, `tmp/` under `storage_dir`.
-- `GenerateImage` can only save into the workspace `assets/` folder (usually on C). Right after each image is generated, move it into `<storage_dir>/assets/` with a shell command and use the new location from then on. Never leave generated images behind in the workspace.
-- Run `video_render.py` and `keyframes_to_video.py` without `--out` or `--root` so they use the storage folder and its `tmp/` for scratch files (the scripts also point TEMP/TMP of ffmpeg at that `tmp/`). If you pass `--out`, it must be a path under `storage_dir`.
-- Frame checks and other one-off ffmpeg outputs also go in `<storage_dir>/tmp/`, never in the repo or workspace folder.
-- If `storage_dir` is on the C drive, tell the user once that large video files will fill C and suggest running `python setup.py` to choose D.
-- If the settings file does not exist yet, the first renderer run opens the setup window on the user's screen and waits for their choice; tell the user to look for it. On machines with no display the scripts use the default `D:\VideoCreator` without saving, and the user can run `python setup.py` later.
+Design for a 16GB LG Gram with Intel Iris integrated graphics and little free RAM. The current RTX host is only a compatibility/test machine; never infer Gram speed from its results. Runtime data stays inside the explicitly selected C or D SSD subfolder. Preserve the original USB archive and prior D data. Default Neo auto selects a discrete GPU if present, otherwise an integrated OpenCL GPU. Only video transformer Linear layers execute on GPU; attention, text, VAE and safety stay CPU. Stream original mapped BF16 matrices one at a time with at most 64MiB explicit GPU buffers, 5GiB process working set and 4 CPU threads. Driver memory is additional. Default preview is 384x256, 49 real frames, about 2 seconds. Never silently raise memory limits or substitute a slideshow, interpolation, external API or GUI. Respect RAM and safety rejection. Construction cooperation/identity/Sora2 realism and Iris performance are unverified; site work is an explicitly described diagnostic draft. Model weights have not been finetuned. Wan remains optional diagnosis and is not the Gram default.

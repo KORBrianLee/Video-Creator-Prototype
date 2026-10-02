@@ -1,0 +1,8 @@
+{
+  "title": "해변의 파도",
+  "script": "햇빛 아래 해변으로 작은 파도가 밀려왔다가 물러난다. 카메라는 고정한다.",
+  "model_profile": "neodragon",
+  "preset": "preview",
+  "seed": 42,
+  "scenes": [{"id": "ocean", "prompt": "Photorealistic small ocean waves roll onto a sandy beach in daylight, white foam advances and recedes, static camera."}]
+}

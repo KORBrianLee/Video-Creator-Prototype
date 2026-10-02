@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "checked_on": "2026-10-01",
+  "model_id": "animatediff-lightning-sd15-q4",
+  "model_license": "CreativeML-OpenRAIL-M",
+  "license_note": "Commercial use permitted subject to the use restrictions and redistribution obligations. This is an open-weight model under a use-restricted license, not Apache/MIT weights.",
+  "files": [
+    {"role": "base", "repo": "gpustack/stable-diffusion-v1-5-GGUF", "revision": "dcac270609fffc0ce7c7d41a3c0e752721859f7c", "source_file": "stable-diffusion-v1-5-Q4_0.gguf", "filename": "stable-diffusion-v1-5-Q4_0.gguf", "size": 1747190784, "sha256": "c2f6e92f9d08d69cc673a1003528ac8199274b3c0eaec88d5fbefe5af67bd42b", "license": "CreativeML-OpenRAIL-M", "provenance": "Third-party SD1.5 GGUF, CLIP and VAE retained FP16; not an official SD release."},
+    {"role": "motion", "repo": "ByteDance/AnimateDiff-Lightning", "revision": "027c893eec01df7330f5d4b733bc9485ee02e8b2", "source_file": "animatediff_lightning_4step_comfyui.safetensors", "filename": "animatediff_lightning_4step_comfyui.safetensors", "size": 908929664, "sha256": "aeb66ae8ff4a868d31379c3bde3e5e7e510a4d4b565a06ee4f1297e93a561dc5", "license": "CreativeML-OpenRAIL-M", "provenance": "Official ByteDance 4-step native AnimateDiff format including temporal positional encoders. ComfyUI software is not used."}
+  ],
+  "sampling": {"method": "euler", "steps": 4, "cfg_scale": 1.0, "sigmas": [25.146114834133797, 6.5572126303754885, 2.2759626091881286, 0.8670202384471292, 0.0], "sigma_derivation": "EulerDiscreteScheduler, beta_start=.00085, beta_end=.012, beta_schedule=linear, num_train_timesteps=1000, timestep_spacing=trailing, 4 timesteps 999,749,499,249. Base model alpha tensor must also use linear beta; custom sigmas alone are insufficient."},
+  "prepared_base": {"filename": "stable-diffusion-v1-5-Q4_0-lightning-linear.gguf", "size": 1747194848, "sha256": "b4a990b50d0700a9b80687adde0ba3cf545137bbe230b2605bbf0bb366d0c61f", "input_sha256": "c2f6e92f9d08d69cc673a1003528ac8199274b3c0eaec88d5fbefe5af67bd42b", "preparation_version": "lightning-linear-alphas-gguf-v1", "modification_notice": "Adds the official Lightning linear alphas_cumprod F32 schedule tensor. All original learned tensor bytes preserved; original source file retained separately."}
+}

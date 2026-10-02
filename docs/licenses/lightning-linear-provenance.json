@@ -1,0 +1,37 @@
+{
+  "filename": "stable-diffusion-v1-5-Q4_0-lightning-linear.gguf",
+  "path": "D:\\CursorVideoLocal\\models\\stable-diffusion-v1-5-Q4_0-lightning-linear.gguf",
+  "size": 1747194848,
+  "sha256": "b4a990b50d0700a9b80687adde0ba3cf545137bbe230b2605bbf0bb366d0c61f",
+  "input_filename": "stable-diffusion-v1-5-Q4_0.gguf",
+  "input_sha256": "c2f6e92f9d08d69cc673a1003528ac8199274b3c0eaec88d5fbefe5af67bd42b",
+  "input_size": 1747190784,
+  "preparation_version": "lightning-linear-alphas-gguf-v1",
+  "prepared_at": 1790858583.4002821,
+  "added_or_replaced_tensor": {
+    "name": "alphas_cumprod",
+    "dtype": "F32",
+    "shape": [
+      1000
+    ],
+    "schedule": "linear",
+    "beta_start": 0.00085,
+    "beta_end": 0.012,
+    "alpha_tensor_sha256": "b78dc5b23009b9e29b4fc81b614838efd3e06651df4203fcda4fbe1c1f471ce3"
+  },
+  "preservation": {
+    "original_file_unchanged": true,
+    "original_tensor_payload_byte_identical": true,
+    "original_tensor_payload_sha256": "c34518cc07686f8e371574c66d81b46e487bb473af9cba1462c749aea5474920",
+    "copied_tensor_count": 1130
+  },
+  "license": "CreativeML-OpenRAIL-M",
+  "modification_notice": "SD1.5 base copy with AnimateDiff-Lightning linear alphas_cumprod scheduler tensor. Original learned weights are unchanged.",
+  "sources": [
+    "https://huggingface.co/ByteDance/AnimateDiff-Lightning/blob/027c893eec01df7330f5d4b733bc9485ee02e8b2/README.md",
+    "https://github.com/leejet/stable-diffusion.cpp/blob/3f8527a/src/pipeline/diffusion_engine.cpp",
+    "https://github.com/leejet/stable-diffusion.cpp/blob/3f8527a/src/model_loader.cpp"
+  ],
+  "engine_load_and_visual_quality_verified": false,
+  "reused": false
+}

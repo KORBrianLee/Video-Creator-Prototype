@@ -1,0 +1,8 @@
+{
+  "pillow_version": "12.3.0",
+  "python_version": "3.12.10",
+  "sha256": "2ce797a0f88d7f067180338fb227f7b1928ea727bd9a4d7a1d022f7c52af71a3",
+  "imageio_ffmpeg_version": "0.6.0",
+  "checked_on": "2026-10-01",
+  "ffmpeg_file": "D:\\CursorVideoLocal\\runtime\\python\\Lib\\site-packages\\imageio_ffmpeg\\binaries\\ffmpeg-win-x86_64-v7.1.exe"
+}

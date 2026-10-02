@@ -1,0 +1,418 @@
+{
+  "model_revision": "5bdc87a4895a4fd148ca14c03181345d278d1040",
+  "license_note": "Conditional commercial use: retain notices, follow Qualcomm Responsible AI and SD OpenRAIL use restrictions; the mandatory safety checker is retained.",
+  "model_id": "neodragon-hybrid-320p-cpu-int8-sd15-first-frame",
+  "engine": {
+    "repo": "Qualcomm-AI-research/neodragon",
+    "revision": "d2abbe99f46577c4e1db682ad3c26832ec0c23b9",
+    "files": [
+      {
+        "path": "LICENSE.txt",
+        "sha256": "a985895d4b68c0ea694c287516d6b2171e3feae63706f354678261f542534789"
+      },
+      {
+        "path": "neodragon/__init__.py",
+        "sha256": "052bf34a7e4237b5895ee3271ca96d509dbbe275928091d99d5879c6fe26e825"
+      },
+      {
+        "path": "neodragon/asymmetric_causal_video_vae/__init__.py",
+        "sha256": "70a8f520de51f667faef43dfaf90f44794fac2c7a6ea016625df53acd4327d17"
+      },
+      {
+        "path": "neodragon/asymmetric_causal_video_vae/decoder.py",
+        "sha256": "929e0025127961a902547e2e37119e18d5593c554a7fa3e8276f91db9dd1e771"
+      },
+      {
+        "path": "neodragon/asymmetric_causal_video_vae/encoder.py",
+        "sha256": "20e73496ee5abd4a5afdff9dcca2c2b9723054285f35e179b9009cfeb0f4ddf9"
+      },
+      {
+        "path": "neodragon/asymmetric_causal_video_vae/modeling_block.py",
+        "sha256": "16ef72515e09006b838a3cd2bb842296a2f9ac387fb71af728d8466c06e2bf7e"
+      },
+      {
+        "path": "neodragon/asymmetric_causal_video_vae/modeling_causal_ops.py",
+        "sha256": "bcfdbbeda0efd16e49a9f6cbb7841a45f0627929e6a9d53358bac99bc6fa0fbe"
+      },
+      {
+        "path": "neodragon/asymmetric_causal_video_vae/modeling_resnet.py",
+        "sha256": "65bd735d2a3da58b6c53d47855f08cf6644c00225271ce1ddced24f7448ce642"
+      },
+      {
+        "path": "neodragon/context_adapter.py",
+        "sha256": "afedc38545aad917c726634c31691b27de7d4622787c7421494cff0039393f29"
+      },
+      {
+        "path": "neodragon/distil_t5.py",
+        "sha256": "dede249d3b74b029b3482cc9f914f1aa470ca32246cf115dd86dd0ffb3f2eddd"
+      },
+      {
+        "path": "neodragon/first_frame_gen.py",
+        "sha256": "fafe85c57796b4c9cd5b90c4f993ff5a76a638c5c62ed5824b752ce49b9d108b"
+      },
+      {
+        "path": "neodragon/pyramid_mmdit/__init__.py",
+        "sha256": "25d9df32ec5d36187756e63318b0a7268aae8d0998a6aad9d42b91208ac3a23b"
+      },
+      {
+        "path": "neodragon/pyramid_mmdit/modeling_block.py",
+        "sha256": "70ae2a60c563680d30c362a6812362f533388573c5ac1be61f4abaa64f9af6a5"
+      },
+      {
+        "path": "neodragon/pyramid_mmdit/modeling_embedding.py",
+        "sha256": "696baf990c3def2b86a58069e6930f068507a89d60492dd43842946fd6aa6a03"
+      },
+      {
+        "path": "neodragon/pyramid_mmdit/modeling_normalization.py",
+        "sha256": "be4a1eea80504c883b2b5bd58375043c42261e46f2a6f64f12d35e1db69ff7c9"
+      },
+      {
+        "path": "neodragon/pyramid_scheduler.py",
+        "sha256": "f0edb68b3b01947d243360bae3debd0653d9bfe5ae96c9bb8a2b22f3ebfc9de2"
+      },
+      {
+        "path": "neodragon/safety_checker.py",
+        "sha256": "08bf37e7aced71f1d5b08cf7c8c4db5a566347ac1f82384a23349bbabb1e18a6"
+      },
+      {
+        "path": "neodragon/text_encoder_bundle.py",
+        "sha256": "d00de072e68266c46ef9b59529434e4b79cbd1d13c26cf378f4cab545873e760"
+      },
+      {
+        "path": "neodragon/utils/__init__.py",
+        "sha256": "67d0781eddfe39012a39b95a9bcec559884ad31925825e0e498080b5939895b9"
+      },
+      {
+        "path": "neodragon/utils/generation_utils.py",
+        "sha256": "950fb20a916fd1781679480974de3d189311d7f1ae9936a47d539f190fe6dcbf"
+      },
+      {
+        "path": "neodragon/utils/visualisation_utils.py",
+        "sha256": "9477bfd506df59d4c2bdb2f0dd0ad230698aa88de5803b87f64ab81af5c3271a"
+      }
+    ]
+  },
+  "sampling": {
+    "fps": 24,
+    "method": "pyramid_flow_hybrid",
+    "video_steps": [
+      1,
+      1,
+      1
+    ],
+    "cfg_scale": 0,
+    "image_steps": 20
+  },
+  "code_revision": "d2abbe99f46577c4e1db682ad3c26832ec0c23b9",
+  "schema_version": 2,
+  "model_license": "BSD-3-Clause-Clear AND Qualcomm-Responsible-AI-License AND CreativeML-OpenRAIL-M",
+  "files": [
+    {
+      "role": "causal_video_vae",
+      "path": "causal_video_vae/config.json",
+      "license": "BSD-3-Clause-Clear AND Qualcomm-Responsible-AI-License",
+      "revision": "5bdc87a4895a4fd148ca14c03181345d278d1040",
+      "size": 1026,
+      "filename": "experimental-neodragon/causal_video_vae/config.json",
+      "sha256": "295b75f9de0fb4277455b62f6ffdec8caafd188686be1ba500c5c7524af82cd4",
+      "repo": "Qualcomm-AI-Research/Neodragon"
+    },
+    {
+      "role": "causal_video_vae",
+      "path": "causal_video_vae/diffusion_pytorch_model.safetensors",
+      "license": "BSD-3-Clause-Clear AND Qualcomm-Responsible-AI-License",
+      "revision": "5bdc87a4895a4fd148ca14c03181345d278d1040",
+      "size": 239107038,
+      "filename": "experimental-neodragon/causal_video_vae/diffusion_pytorch_model.safetensors",
+      "sha256": "413f1e98fe0611bf78853acad28ca653ce2768577cfe9822420f4eafd3cb1cf1",
+      "repo": "Qualcomm-AI-Research/Neodragon"
+    },
+    {
+      "role": "context_adapter",
+      "path": "context_adapter/config.json",
+      "license": "BSD-3-Clause-Clear AND Qualcomm-Responsible-AI-License",
+      "revision": "5bdc87a4895a4fd148ca14c03181345d278d1040",
+      "size": 345,
+      "filename": "experimental-neodragon/context_adapter/config.json",
+      "sha256": "aecfbf90ac128d370b3f5233f37b88e6f75695f3450f51a3700512ad9759811e",
+      "repo": "Qualcomm-AI-Research/Neodragon"
+    },
+    {
+      "role": "context_adapter",
+      "path": "context_adapter/diffusion_pytorch_model.safetensors",
+      "license": "BSD-3-Clause-Clear AND Qualcomm-Responsible-AI-License",
+      "revision": "5bdc87a4895a4fd148ca14c03181345d278d1040",
+      "size": 520166344,
+      "filename": "experimental-neodragon/context_adapter/diffusion_pytorch_model.safetensors",
+      "sha256": "4c9e2ccbed009c5fd94856c933ef492a9045f28bf04cb51b74fbe08698229d7f",
+      "repo": "Qualcomm-AI-Research/Neodragon"
+    },
+    {
+      "role": "diffusion_transformer_320p",
+      "path": "diffusion_transformer_320p/config.json",
+      "license": "BSD-3-Clause-Clear AND Qualcomm-Responsible-AI-License",
+      "revision": "5bdc87a4895a4fd148ca14c03181345d278d1040",
+      "size": 657,
+      "filename": "experimental-neodragon/diffusion_transformer_320p/config.json",
+      "sha256": "b89ba2992c2740da3c23ac93109f3a3d48635008f82419c684267079130fd88e",
+      "repo": "Qualcomm-AI-Research/Neodragon"
+    },
+    {
+      "role": "diffusion_transformer_320p",
+      "path": "diffusion_transformer_320p/diffusion_pytorch_model.safetensors",
+      "license": "BSD-3-Clause-Clear AND Qualcomm-Responsible-AI-License",
+      "revision": "5bdc87a4895a4fd148ca14c03181345d278d1040",
+      "size": 3137624552,
+      "filename": "experimental-neodragon/diffusion_transformer_320p/diffusion_pytorch_model.safetensors",
+      "sha256": "ccc929881ee6a0474325998b2b80dcab199a39282ae773abf17a18c7fde0e31d",
+      "repo": "Qualcomm-AI-Research/Neodragon"
+    },
+    {
+      "role": "text_encoder",
+      "path": "text_encoder/config.json",
+      "license": "BSD-3-Clause-Clear AND Qualcomm-Responsible-AI-License",
+      "revision": "5bdc87a4895a4fd148ca14c03181345d278d1040",
+      "size": 575,
+      "filename": "experimental-neodragon/text_encoder/config.json",
+      "sha256": "0a9730db94a5851df438cad1d6898bca471703b548ca91aeaa25763f7cd978b6",
+      "repo": "Qualcomm-AI-Research/Neodragon"
+    },
+    {
+      "role": "text_encoder",
+      "path": "text_encoder/model.safetensors",
+      "license": "BSD-3-Clause-Clear AND Qualcomm-Responsible-AI-License",
+      "revision": "5bdc87a4895a4fd148ca14c03181345d278d1040",
+      "size": 247324096,
+      "filename": "experimental-neodragon/text_encoder/model.safetensors",
+      "sha256": "b4ddf499861727e83713b525ba1e087202f248a7ebb2268b04d1de09de5b67c2",
+      "repo": "Qualcomm-AI-Research/Neodragon"
+    },
+    {
+      "role": "text_encoder_2",
+      "path": "text_encoder_2/config.json",
+      "license": "BSD-3-Clause-Clear AND Qualcomm-Responsible-AI-License",
+      "revision": "5bdc87a4895a4fd148ca14c03181345d278d1040",
+      "size": 571,
+      "filename": "experimental-neodragon/text_encoder_2/config.json",
+      "sha256": "fd54eaf1b561eacf94854fd5102eca4c74b3a9f0cca20d99d25b2bdf5a0a36b6",
+      "repo": "Qualcomm-AI-Research/Neodragon"
+    },
+    {
+      "role": "text_encoder_2",
+      "path": "text_encoder_2/model.safetensors",
+      "license": "BSD-3-Clause-Clear AND Qualcomm-Responsible-AI-License",
+      "revision": "5bdc87a4895a4fd148ca14c03181345d278d1040",
+      "size": 1389382688,
+      "filename": "experimental-neodragon/text_encoder_2/model.safetensors",
+      "sha256": "c4ba596d8c78b5509aafd523f619e13aa129ae1a886a1e92766d7cddd9706f3c",
+      "repo": "Qualcomm-AI-Research/Neodragon"
+    },
+    {
+      "role": "text_encoder_3",
+      "path": "text_encoder_3/config.json",
+      "license": "BSD-3-Clause-Clear AND Qualcomm-Responsible-AI-License",
+      "revision": "5bdc87a4895a4fd148ca14c03181345d278d1040",
+      "size": 1565,
+      "filename": "experimental-neodragon/text_encoder_3/config.json",
+      "sha256": "6e6d94225480bf8de5ea51d1c51f65bd226ae79f2d0c3a4b6c7d314d92f3bacf",
+      "repo": "Qualcomm-AI-Research/Neodragon"
+    },
+    {
+      "role": "text_encoder_3",
+      "path": "text_encoder_3/model.safetensors",
+      "license": "BSD-3-Clause-Clear AND Qualcomm-Responsible-AI-License",
+      "revision": "5bdc87a4895a4fd148ca14c03181345d278d1040",
+      "size": 259117320,
+      "filename": "experimental-neodragon/text_encoder_3/model.safetensors",
+      "sha256": "604e3fce339b87c4f34a1ab97fc05dee34149438218af1ce1d769d568938ef5c",
+      "repo": "Qualcomm-AI-Research/Neodragon"
+    },
+    {
+      "role": "tokenizer",
+      "path": "tokenizer/merges.txt",
+      "license": "BSD-3-Clause-Clear AND Qualcomm-Responsible-AI-License",
+      "revision": "5bdc87a4895a4fd148ca14c03181345d278d1040",
+      "size": 524619,
+      "filename": "experimental-neodragon/tokenizer/merges.txt",
+      "sha256": "9fd691f7c8039210e0fced15865466c65820d09b63988b0174bfe25de299051a",
+      "repo": "Qualcomm-AI-Research/Neodragon"
+    },
+    {
+      "role": "tokenizer",
+      "path": "tokenizer/special_tokens_map.json",
+      "license": "BSD-3-Clause-Clear AND Qualcomm-Responsible-AI-License",
+      "revision": "5bdc87a4895a4fd148ca14c03181345d278d1040",
+      "size": 588,
+      "filename": "experimental-neodragon/tokenizer/special_tokens_map.json",
+      "sha256": "2cdb3b8331a60c92fc1e55a13e9fd61fd2293c5a51275fdcccd62b780052530e",
+      "repo": "Qualcomm-AI-Research/Neodragon"
+    },
+    {
+      "role": "tokenizer",
+      "path": "tokenizer/tokenizer_config.json",
+      "license": "BSD-3-Clause-Clear AND Qualcomm-Responsible-AI-License",
+      "revision": "5bdc87a4895a4fd148ca14c03181345d278d1040",
+      "size": 705,
+      "filename": "experimental-neodragon/tokenizer/tokenizer_config.json",
+      "sha256": "6bdcee9ccce2a16ca2b4c0c5ed00b42c50ea225f4472a8c4c1e963a2902c2881",
+      "repo": "Qualcomm-AI-Research/Neodragon"
+    },
+    {
+      "role": "tokenizer",
+      "path": "tokenizer/vocab.json",
+      "license": "BSD-3-Clause-Clear AND Qualcomm-Responsible-AI-License",
+      "revision": "5bdc87a4895a4fd148ca14c03181345d278d1040",
+      "size": 1059962,
+      "filename": "experimental-neodragon/tokenizer/vocab.json",
+      "sha256": "e089ad92ba36837a0d31433e555c8f45fe601ab5c221d4f607ded32d9f7a4349",
+      "repo": "Qualcomm-AI-Research/Neodragon"
+    },
+    {
+      "role": "tokenizer_2",
+      "path": "tokenizer_2/merges.txt",
+      "license": "BSD-3-Clause-Clear AND Qualcomm-Responsible-AI-License",
+      "revision": "5bdc87a4895a4fd148ca14c03181345d278d1040",
+      "size": 524619,
+      "filename": "experimental-neodragon/tokenizer_2/merges.txt",
+      "sha256": "9fd691f7c8039210e0fced15865466c65820d09b63988b0174bfe25de299051a",
+      "repo": "Qualcomm-AI-Research/Neodragon"
+    },
+    {
+      "role": "tokenizer_2",
+      "path": "tokenizer_2/special_tokens_map.json",
+      "license": "BSD-3-Clause-Clear AND Qualcomm-Responsible-AI-License",
+      "revision": "5bdc87a4895a4fd148ca14c03181345d278d1040",
+      "size": 576,
+      "filename": "experimental-neodragon/tokenizer_2/special_tokens_map.json",
+      "sha256": "c4dbb96da703fb38f10ccf0490df2fd476811c5a3e71b7e0189cffeed3224e25",
+      "repo": "Qualcomm-AI-Research/Neodragon"
+    },
+    {
+      "role": "tokenizer_2",
+      "path": "tokenizer_2/tokenizer_config.json",
+      "license": "BSD-3-Clause-Clear AND Qualcomm-Responsible-AI-License",
+      "revision": "5bdc87a4895a4fd148ca14c03181345d278d1040",
+      "size": 856,
+      "filename": "experimental-neodragon/tokenizer_2/tokenizer_config.json",
+      "sha256": "e70eb3e2b85a508e32bb81c32c13fc3f2b015548ca469b94627c2f32e445cba1",
+      "repo": "Qualcomm-AI-Research/Neodragon"
+    },
+    {
+      "role": "tokenizer_2",
+      "path": "tokenizer_2/vocab.json",
+      "license": "BSD-3-Clause-Clear AND Qualcomm-Responsible-AI-License",
+      "revision": "5bdc87a4895a4fd148ca14c03181345d278d1040",
+      "size": 1059962,
+      "filename": "experimental-neodragon/tokenizer_2/vocab.json",
+      "sha256": "e089ad92ba36837a0d31433e555c8f45fe601ab5c221d4f607ded32d9f7a4349",
+      "repo": "Qualcomm-AI-Research/Neodragon"
+    },
+    {
+      "role": "tokenizer_3",
+      "path": "tokenizer_3/special_tokens_map.json",
+      "license": "BSD-3-Clause-Clear AND Qualcomm-Responsible-AI-License",
+      "revision": "5bdc87a4895a4fd148ca14c03181345d278d1040",
+      "size": 2543,
+      "filename": "experimental-neodragon/tokenizer_3/special_tokens_map.json",
+      "sha256": "7a1985a994c41886db38c719d2a3d2f40606663cc19d7c5d6a85d349320e06d2",
+      "repo": "Qualcomm-AI-Research/Neodragon"
+    },
+    {
+      "role": "tokenizer_3",
+      "path": "tokenizer_3/spiece.model",
+      "license": "BSD-3-Clause-Clear AND Qualcomm-Responsible-AI-License",
+      "revision": "5bdc87a4895a4fd148ca14c03181345d278d1040",
+      "size": 791656,
+      "filename": "experimental-neodragon/tokenizer_3/spiece.model",
+      "sha256": "d60acb128cf7b7f2536e8f38a5b18a05535c9e14c7a355904270e15b0945ea86",
+      "repo": "Qualcomm-AI-Research/Neodragon"
+    },
+    {
+      "role": "tokenizer_3",
+      "path": "tokenizer_3/tokenizer.json",
+      "license": "BSD-3-Clause-Clear AND Qualcomm-Responsible-AI-License",
+      "revision": "5bdc87a4895a4fd148ca14c03181345d278d1040",
+      "size": 2424035,
+      "filename": "experimental-neodragon/tokenizer_3/tokenizer.json",
+      "sha256": "652ffdfc379606bad8edfb653f92dcf28e2e5dbf1cdfe50d685d29b2cad12dd6",
+      "repo": "Qualcomm-AI-Research/Neodragon"
+    },
+    {
+      "role": "tokenizer_3",
+      "path": "tokenizer_3/tokenizer_config.json",
+      "license": "BSD-3-Clause-Clear AND Qualcomm-Responsible-AI-License",
+      "revision": "5bdc87a4895a4fd148ca14c03181345d278d1040",
+      "size": 20617,
+      "filename": "experimental-neodragon/tokenizer_3/tokenizer_config.json",
+      "sha256": "83b3e7737eef754efca607d9f580798cc35457daa96052cc60179f095a375c14",
+      "repo": "Qualcomm-AI-Research/Neodragon"
+    },
+    {
+      "role": "safety_checker",
+      "path": "README.md",
+      "license": "MIT",
+      "revision": "cb41f3a270d63d454d385fc2e4f571c487c253c5",
+      "size": 5367,
+      "filename": "experimental-safety-checker/README.md",
+      "sha256": "a63c29ecba711d56bd9287fe89128ff35f5987252a368f2427cdfeea2c46185e",
+      "repo": "CompVis/stable-diffusion-safety-checker"
+    },
+    {
+      "role": "safety_checker",
+      "path": "config.json",
+      "license": "MIT",
+      "revision": "cb41f3a270d63d454d385fc2e4f571c487c253c5",
+      "size": 4549,
+      "filename": "experimental-safety-checker/config.json",
+      "sha256": "c879a63ee73f528bc5ec148aaea487b2b165f6a785f9cb55b90e590ba7977e0e",
+      "repo": "CompVis/stable-diffusion-safety-checker"
+    },
+    {
+      "role": "safety_checker",
+      "path": "preprocessor_config.json",
+      "license": "MIT",
+      "revision": "cb41f3a270d63d454d385fc2e4f571c487c253c5",
+      "size": 342,
+      "filename": "experimental-safety-checker/preprocessor_config.json",
+      "sha256": "2a1da83b5e1032aaeef397552ddb408dca0d8cd1dc58f61bf6abf38d6f33a0a2",
+      "repo": "CompVis/stable-diffusion-safety-checker"
+    },
+    {
+      "role": "safety_checker",
+      "path": "pytorch_model.bin",
+      "license": "MIT",
+      "revision": "cb41f3a270d63d454d385fc2e4f571c487c253c5",
+      "size": 1216067303,
+      "filename": "experimental-safety-checker/pytorch_model.bin",
+      "sha256": "64b8393f1afd5a0c1ed2aa5f341fa7c08286839a48f3743162a76a2835c808bd",
+      "repo": "CompVis/stable-diffusion-safety-checker"
+    },
+    {
+      "role": "base",
+      "repo": "gpustack/stable-diffusion-v1-5-GGUF",
+      "revision": "dcac270609fffc0ce7c7d41a3c0e752721859f7c",
+      "source_file": "stable-diffusion-v1-5-Q4_0.gguf",
+      "filename": "stable-diffusion-v1-5-Q4_0.gguf",
+      "size": 1747190784,
+      "sha256": "c2f6e92f9d08d69cc673a1003528ac8199274b3c0eaec88d5fbefe5af67bd42b",
+      "license": "CreativeML-OpenRAIL-M",
+      "provenance": "Third-party SD1.5 GGUF, CLIP and VAE retained FP16; not an official SD release."
+    }
+  ],
+  "first_frame_engine": {
+    "repository": "leejet/stable-diffusion.cpp",
+    "tag": "master-929-3f8527a",
+    "commit": "3f8527a",
+    "license": "MIT",
+    "cpu": {
+      "url": "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-929-3f8527a/sd-master-3f8527a-bin-win-cpu-x64.zip",
+      "size": 17486440,
+      "sha256": "5e7caca2080321b25a12c1fa4175cb7d953f2b182309f8f73bfc9c725231d26c"
+    },
+    "vulkan": {
+      "url": "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-929-3f8527a/sd-master-3f8527a-bin-win-vulkan-x64.zip",
+      "size": 30067605,
+      "sha256": "60e6850d650417409f18c2170ab5e27335db96da70cd3d1ad1e930bcffc2fd35"
+    }
+  }
+}

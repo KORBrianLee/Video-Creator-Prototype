@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "purpose": "licensed_motion_reference_and_future_dataset_preparation_not_completed_weight_training",
+  "assets": [
+    {
+      "id": "rail_excavator_workers",
+      "title": "File:Praha-Hostivař, přenášení kolejnic kolejovým bagrem.webm",
+      "author": "ŠJů, Wikimedia Commons",
+      "license": "CC BY 4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "sha1": "39ed0cf22706b0bc1c81d05d9c647cb4f6e62821",
+      "bytes": 3837384,
+      "starts": [0, 8, 16],
+      "caption": "A road-rail excavator moves railway rails at a work site."
+    },
+    {
+      "id": "rail_lifting_crew",
+      "title": "File:Rekonstrukce smyčky Florenc, přenášení koleje.webm",
+      "author": "ŠJů, Wikimedia Commons",
+      "license": "CC BY 4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "sha1": "f0c7000d2cfb32ecd0ebc2e2fa4833250623123e",
+      "bytes": 1368052,
+      "starts": [0, 6, 12],
+      "caption": "A construction machine transfers a railway track during reconstruction of a tram loop."
+    },
+    {
+      "id": "excavator_truck_motion",
+      "title": "File:Excavator digging land and loading truck.webm",
+      "author": "KEmel49",
+      "license": "CC BY-SA 4.0",
+      "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "sha1": "a5a8dc02156edd76f98e8737840e25411a17a9a4",
+      "bytes": 28408467,
+      "starts": [0, 5, 10],
+      "caption": "An excavator digs soil and loads a truck."
+    }
+  ]
+}

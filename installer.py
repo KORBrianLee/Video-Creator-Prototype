@@ -1,0 +1,201 @@
+"""Explicit one-time downloads; generation itself never accesses the network."""
+from __future__ import annotations
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path, PureWindowsPath
+import shutil
+import subprocess
+import sys
+import time
+import urllib.request
+import zipfile
+
+SOURCE = Path(__file__).resolve().parent
+sys.path.insert(0, str(SOURCE))
+sys.stdout.reconfigure(encoding="utf-8")
+
+def sha(path):
+    with path.open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
+
+def d_root(value):
+    # Retain the installer function name for older preparation scripts.
+    from local_video.storage import runtime_root
+    return runtime_root(value)
+
+def download(url, dest, expected_sha=None, size=None):
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if dest.is_file() and (size is None or dest.stat().st_size == size) and (expected_sha is None or sha(dest) == expected_sha):
+        print(json.dumps({"file": dest.name, "state": "already_verified"}), flush=True)
+        return
+    partial = dest.with_suffix(dest.suffix + ".partial")
+    for attempt in range(3):
+        offset = partial.stat().st_size if partial.exists() else 0
+        headers = {"User-Agent": "CursorVideoLocal/0.2"}
+        if offset:
+            headers["Range"] = f"bytes={offset}-"
+        try:
+            with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=60) as response:
+                resumed = response.status == 206 and offset > 0
+                with partial.open("ab" if resumed else "wb") as stream:
+                    done = offset if resumed else 0
+                    last_report = time.monotonic()
+                    while chunk := response.read(1024 * 1024):
+                        stream.write(chunk)
+                        done += len(chunk)
+                        if time.monotonic() - last_report > 30:
+                            print(json.dumps({"file": dest.name, "downloaded_MiB": round(done / 2**20), "total_MiB": round(size / 2**20) if size else None}), flush=True)
+                            last_report = time.monotonic()
+            if size is not None and partial.stat().st_size != size:
+                raise ValueError("Downloaded size mismatch")
+            if expected_sha is not None and sha(partial) != expected_sha:
+                partial.unlink()
+                raise ValueError("SHA256 mismatch; file was not installed")
+            partial.replace(dest)
+            print(json.dumps({"file": dest.name, "state": "verified", "sha256": sha(dest)}), flush=True)
+            return
+        except Exception:
+            if attempt == 2:
+                raise
+            time.sleep(2)
+
+def extract(archive, target):
+    target.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(archive) as z:
+        for item in z.infolist():
+            if not (target / item.filename).resolve().is_relative_to(target.resolve()):
+                raise ValueError("Unsafe archive path")
+        for item in z.infolist():
+            destination = target / item.filename
+            if not item.is_dir() and destination.is_file() and destination.stat().st_size == item.file_size:
+                with z.open(item) as incoming, destination.open("rb") as existing:
+                    unchanged = hashlib.file_digest(incoming, "sha256").digest() == hashlib.file_digest(existing, "sha256").digest()
+                if unchanged:
+                    continue  # Keep a matching Windows executable that may be running.
+            z.extract(item, target)
+
+def inside(root, *parts):
+    target = root.joinpath(*parts).resolve()
+    if not target.is_relative_to(root.resolve()):
+        raise ValueError("설치 경로가 선택한 실행 폴더 밖으로 연결됩니다.")
+    return target
+
+def deploy(root, profile=None):
+    target = inside(root, "app")
+    target.mkdir(parents=True, exist_ok=True)
+    allow = {"local_video", ".cursor", "docs", "examples", "tests", "tools"}
+    for item in SOURCE.iterdir():
+        if item.resolve() == (target / item.name).resolve():
+            continue
+        if item.is_file() and (item.suffix in {".py", ".json", ".md", ".txt", ".cmd", ".ps1"} or item.name == "LICENSE"):
+            shutil.copy2(item, inside(root, "app", item.name))
+        elif item.is_dir() and item.name in allow:
+            shutil.copytree(item, inside(root, "app", item.name), dirs_exist_ok=True, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    cfg = {"runtime_dir": str(root), "backend": "auto", "model_profile": profile or "neodragon", "threads": 4, "minimum_free_ram_gib": 3.0, "reserve_ram_gib": 1.5, "maximum_working_set_gib": 5.0}
+    if not (target / "video.config.json").exists():
+        (target / "video.config.json").write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+    else:
+        saved = json.loads((target / "video.config.json").read_text(encoding="utf-8-sig"))
+        if saved.get("runtime_dir") != str(root):
+            saved["runtime_dir"] = str(root)
+            (target / "video.config.json").write_text(json.dumps(saved, ensure_ascii=False, indent=2), encoding="utf-8")
+    python = root / "runtime" / "python" / "python.exe"
+    cursor = target / ".cursor"
+    cursor.mkdir(exist_ok=True)
+    path = inside(root, "app", ".cursor", "mcp.json")
+    config = json.loads(path.read_text(encoding="utf-8-sig")) if path.is_file() else {}
+    if not isinstance(config, dict) or not isinstance(config.get("mcpServers", {}), dict):
+        raise ValueError("기존 Cursor 연결 설정 형식이 올바르지 않습니다. 파일을 덮어쓰지 않았습니다.")
+    config.setdefault("mcpServers", {})["local-video"] = {"command": str(python), "args": [str(target / "mcp_server.py")], "env": {"PYTHONDONTWRITEBYTECODE": "1", "PYTHONIOENCODING": "utf-8", "CVL_RUNTIME_DIR": str(root), "TEMP": str(root / "tmp"), "TMP": str(root / "tmp")}}
+    pending = path.with_suffix(".json.tmp")
+    pending.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
+    pending.replace(path)
+    print(json.dumps({"project": str(target), "cursor_config": str(cursor / "mcp.json")}, ensure_ascii=False), flush=True)
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("action", choices=["prepare", "models", "deploy", "all"])
+    from local_video.storage import default_runtime
+    parser.add_argument("--runtime-dir", default=default_runtime())
+    parser.add_argument("--with-vulkan", action="store_true")
+    parser.add_argument("--backend", choices=["auto", "gpu", "intel-gpu", "intel-vulkan", "cpu"])
+    parser.add_argument("--profile", choices=["neodragon", "lightning", "wan"], default="neodragon")
+    args = parser.parse_args()
+    root = d_root(args.runtime_dir)
+    root.mkdir(parents=True, exist_ok=True)
+    for name in ["tmp", "downloads", "models", "cache", "jobs", "audits"]:
+        inside(root, name).mkdir(exist_ok=True)
+    os.environ.update(TMP=str(root / "tmp"), TEMP=str(root / "tmp"), PIP_CACHE_DIR=str(root / "cache" / "pip"), PYTHONDONTWRITEBYTECODE="1")
+    lock = json.loads((SOURCE / "models.lock.json").read_text(encoding="utf-8"))
+    lock_file = {"neodragon": "neodragon.lock.json", "lightning": "lightning.lock.json", "wan": "models.lock.json"}[args.profile]
+    model_lock = json.loads((SOURCE / lock_file).read_text(encoding="utf-8"))
+    if args.action in {"prepare", "all"}:
+        archive = root / "downloads" / "python-3.12.10-embed-amd64.zip"
+        runtime_lock = json.loads((SOURCE / "runtime.lock.json").read_text(encoding="utf-8"))
+        download(runtime_lock["python"]["url"], archive, runtime_lock["python"]["sha256"])
+        pyroot = inside(root, "runtime", "python")
+        extract(archive, pyroot)
+        (pyroot / "python312._pth").write_text("python312.zip\n.\nLib/site-packages\n../../app\nimport site\n", encoding="utf-8")
+        # Pinned Windows wheels are zip archives. No system Python or pip needed.
+        for item in runtime_lock["wheels"]:
+            wheel = root / "downloads" / item["filename"]
+            download(item["url"], wheel, item["sha256"], item["size"])
+            extract(wheel, inside(root, "runtime", "python", "Lib", "site-packages"))
+        for backend in (["cpu", "vulkan"] if args.with_vulkan or args.profile == "wan" else ["cpu"]):
+            item = lock["engine"][backend]
+            archive = root / "downloads" / item["url"].split("/")[-1]
+            download(item["url"], archive, item["sha256"], item["size"])
+            extract(archive, inside(root, "engines", backend))
+        audit = {"python_source": "https://www.python.org/ftp/python/3.12.10/", "python_archive_sha256": sha(root / "downloads" / "python-3.12.10-embed-amd64.zip"), "note": "Python archive downloaded from python.org over TLS; digest recorded after acquisition."}
+        (root / "audits" / "runtime-source.json").write_text(json.dumps(audit, indent=2), encoding="utf-8")
+        if args.profile == "neodragon":
+            from tools.setup_neodragon_probe import prepare
+            from local_video.neodragon import runtime_errors
+            if runtime_errors(SOURCE, root) or not inside(root, "engines", "experimental-neodragon", "source-provenance.json").is_file():
+                prepare(root, json.loads((SOURCE / "neodragon-research.lock.json").read_text(encoding="utf-8")))
+    if args.action in {"models", "all"}:
+        missing_bytes = sum(x["size"] for x in model_lock["files"] if not (root / "models" / x["filename"]).is_file())
+        if shutil.disk_usage(root).free < missing_bytes + 2 * 2**30:
+            raise ValueError("선택한 SSD의 여유 공간이 부족합니다.")
+        for item in model_lock["files"]:
+            source_file = item.get("source_file", item.get("path"))
+            url = f'https://huggingface.co/{item["repo"]}/resolve/{item["revision"]}/{source_file}'
+            download(url, inside(root, "models", *item["filename"].split("/")), item["sha256"], item["size"])
+        if args.profile == "lightning" and model_lock.get("prepared_base"):
+            from prepare_lightning import prepare
+            prepared = model_lock["prepared_base"]
+            base = next(item for item in model_lock["files"] if item["role"] == "base")
+            prepare(root / "models" / base["filename"], root / "models" / prepared["filename"], base["sha256"])
+            if sha(root / "models" / prepared["filename"]) != prepared["sha256"]:
+                raise ValueError("Lightning 호환 사본 SHA256이 고정된 값과 다릅니다.")
+        (root / "models" / lock_file).write_text(json.dumps(model_lock, indent=2), encoding="utf-8")
+    deploy(root, args.profile)
+    if args.backend is not None:
+        config_path = inside(root, "app", "video.config.json")
+        saved = json.loads(config_path.read_text(encoding="utf-8-sig"))
+        saved["backend"] = args.backend
+        config_path.write_text(json.dumps(saved, ensure_ascii=False, indent=2), encoding="utf-8")
+    if args.profile == "neodragon" and args.action in {"models", "all"}:
+        config_path = inside(root, "app", "video.config.json")
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        config.update(model_profile="neodragon")
+        config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
+    if args.profile == "neodragon" and args.action in {"models", "all"}:
+        from local_video.opencl_linear import plan
+        config = json.loads(inside(root, "app", "video.config.json").read_text(encoding="utf-8"))
+        selected = plan(config.get("backend", "auto"), config.get("gpu_device"))
+        if selected["gpu_inference"]:
+            print(json.dumps({"int8_conversion": "not_required", "reason": "GPU streams original BF16 matrices without creating a full INT8 copy"}), flush=True)
+            return
+        from local_video.neodragon import run_stage
+        work = inside(root, "tmp", "neodragon-prepare-int8")
+        work.mkdir(parents=True, exist_ok=True)
+        (work / "request.json").write_text(json.dumps({"prompt": "", "width": 512, "height": 320, "frames": 49, "seed": 42, "threads": 4}), encoding="utf-8")
+        request = {"threads": 4, "maximum_working_set_gib": 5.0, "reserve_ram_gib": 1.0, "minimum_free_ram_gib": 3.0}
+        result = run_stage(root, work, "video_pack", request, lambda update: print(json.dumps(update), flush=True), lambda: False)
+        (root / "audits" / "neodragon-int8-setup.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+
+if __name__ == "__main__":
+    main()

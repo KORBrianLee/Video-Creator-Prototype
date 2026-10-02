@@ -1,0 +1,75 @@
+{
+  "state": "passed_cpu_visual_review",
+  "checked_at_utc": "2026-10-01T20:25:40.160109+00:00",
+  "pipeline_revision": "7cfb9b5894a44bf842e8bf0aa7f14a9ed9080650e856961d9f0cb1ed2a285a64",
+  "model_revision": "42ca832b7c3368d2979560040d8144da931b3f42a1518f9ab397add68d76a9bf",
+  "video_relative_path": "examples/validated-beach.mp4",
+  "video_sha256": "a4893b7ad19abee229f951dfd75ff459c2e4d4dd25c57c2bec45fb0e9de28c22",
+  "evidence_job_id": "02df8410a909",
+  "first_image_source_job_id": "85c15a63555a",
+  "cpu_threads": 4,
+  "cuda_used": false,
+  "target_gram_verified": false,
+  "host_cpu": "Intel Core i9-13900HX",
+  "host_ram_gib": 31.78,
+  "elapsed_seconds_with_first_image_cache": 117.593,
+  "peak_inference_working_set_bytes": 4239863808,
+  "verification": {
+    "decoded": true,
+    "frame_count": 49,
+    "fps": 24.0,
+    "width": 512,
+    "height": 320,
+    "continuity": {
+      "state": "no_large_jump_hold_or_darkening_detected",
+      "possible_jump_frames": [],
+      "possible_hold_runs": [],
+      "possible_darkening": null,
+      "median_adjacent_luma_difference": 0.66667,
+      "jump_threshold": 12.0,
+      "limitations": "밝기 변화 검사이며 작업자 수·형태·관절·물리·미세 떨림이나 사실감을 판정하지 않습니다. 의도한 어두워짐도 검토 표시될 수 있습니다."
+    },
+    "duration_seconds": 2.0417,
+    "nonstatic": true,
+    "mean_adjacent_frame_luma_difference": 0.72806,
+    "maximum_adjacent_frame_luma_difference": 1.47396,
+    "changed_frame_pairs": 48,
+    "luma_range": [
+      22,
+      235
+    ],
+    "quality_judgment": "human_review_required_motion_signal_is_not_realism_or_quality_proof"
+  },
+  "visual_review": {
+    "reviewer": "Codex visual inspection of 9 sampled frames plus full decoding",
+    "scope": "one simple beach/water scene regenerated with 0.6 code",
+    "recognizable_scene": true,
+    "shoreline_and_water_change_visible": true,
+    "encoded_video_identical_to_0_5_baseline": true,
+    "limitations": [
+      "Low detail and restrained motion",
+      "Does not certify construction scenes or Sora realism",
+      "Target Gram untested"
+    ]
+  },
+  "safety": {
+    "unsafe": false,
+    "flags": [
+      false,
+      false,
+      false
+    ]
+  },
+  "server_version": "0.6.0",
+  "previous_0_5_measurements": {
+    "first_image_cold_seconds_observed": 175.109,
+    "first_image_and_conditioning_cached_seconds": 87.922,
+    "cold_warm_video_identical": true,
+    "text_seed_tensor_equality": {
+      "prompt_embeds": true,
+      "attention_mask": true,
+      "pooled_prompt_embeds": true
+    },
+    "evidence": "history/neodragon-cpu-0.5.0.json"
+  }
+}
