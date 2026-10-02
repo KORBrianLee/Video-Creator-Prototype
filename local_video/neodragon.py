@@ -66,7 +66,7 @@ def environment(root, threads):
 
 
 def first_frame_key(scene, settings, identity, model_sha256):
-    value = {"version": "sd15-q4-euler20-v1", "engine": identity, "model_sha256": model_sha256,
+    value = {"version": "sd15-q4-euler20-fa-v2", "engine": identity, "model_sha256": model_sha256,
              "prompt": scene.get("first_frame_prompt", scene["prompt"]), "negative_prompt": scene.get("negative_prompt", ""),
              "seed": scene["seed"], "width": settings["width"], "height": settings["height"],
              "steps": 20, "cfg": 7, "sampler": "euler"}
@@ -134,7 +134,7 @@ def first_frame(root, work, scene, settings, request, progress, is_cancelled):
                "--width", str(settings["width"]), "--height", str(settings["height"]),
                "--steps", "20", "--cfg-scale", "7", "--sampling-method", "euler", "--seed", str(scene["seed"]),
                "--threads", str(request["threads"]), "--output", str(work / "first-frame.png"),
-               "--clip-on-cpu", "--vae-on-cpu", "--vae-tiling", "--vae-tile-size", "256x256"]
+               "--clip-on-cpu", "--vae-on-cpu", "--vae-tiling", "--vae-tile-size", "256x256", "--diffusion-fa"]
     media._validate_flags(command, help_text)
     media._write_json(work / "first-frame-command.json", {"argv": command, "engine_identity": identity})
     result = media._infer(command, work, request, progress, is_cancelled, 1, 1, 20, stage_name="first_frame")
@@ -187,7 +187,7 @@ def run_stage(root, work, name, request, progress, is_cancelled):
     python = media._path_in_runtime(root / "runtime" / "neodragon-python" / "python.exe", root)
     stage_file = app / "local_video" / "neodragon_stage.py"
     flags = (subprocess.CREATE_NO_WINDOW | subprocess.BELOW_NORMAL_PRIORITY_CLASS) if os.name == "nt" else 0
-    record = {"name": name, "state": "running", "peak_working_set_bytes": 0,
+    record = {"name": name, "state": "running", "peak_working_set_bytes": 0, "peak_private_resident_bytes": 0,
               "minimum_system_free_bytes": free, "working_set_limit_gib": cap,
               "reserve_ram_gib": reserve, "one_time_conversion": conversion}
     started = heartbeat = time.monotonic()
@@ -205,6 +205,7 @@ def run_stage(root, work, name, request, progress, is_cancelled):
                 working, free = media._memory(process.pid)
                 reclaimable = media._reclaimable(process.pid, working)
                 record["peak_working_set_bytes"] = max(record["peak_working_set_bytes"], working)
+                record["peak_private_resident_bytes"] = max(record["peak_private_resident_bytes"], working - reclaimable)
                 record["minimum_system_free_bytes"] = min(record["minimum_system_free_bytes"], free + reclaimable)
                 if working - reclaimable > cap * 2**30:
                     raise MemoryError(f"단계 {name}의 작업 메모리가 상한 {cap}GiB를 넘었습니다. 이 작업만 중지했습니다.")
@@ -235,7 +236,7 @@ def run_stage(root, work, name, request, progress, is_cancelled):
     finally:
         if process is not None:
             media._stop_owned(process)
-            record_drop(root, name, start_free, record["minimum_system_free_bytes"])
+            record_drop(root, name, start_free, record["minimum_system_free_bytes"], record["peak_private_resident_bytes"])
         record["elapsed_seconds"] = round(time.monotonic()-started, 3)
         media._write_json(work / (name + ".metrics.json"), record)
 

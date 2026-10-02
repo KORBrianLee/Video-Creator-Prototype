@@ -125,6 +125,8 @@ class DeviceTests(unittest.TestCase):
             self.assertGreater(resources.start_requirement_gib(folder, None, limits), 3.5)
             resources.record_drop(folder, "first_frame", int(3 * gib), int(2 * gib))
             self.assertAlmostEqual(resources.learned_drops(folder)["first_frame"], 2.07, places=2)
+            resources.record_drop(folder, "video_infer", int(5 * gib), int(1 * gib), own_peak_bytes=int(1.5 * gib))
+            self.assertAlmostEqual(resources.learned_drops(folder)["video_infer"], 1.5, places=2)
 
     def test_ram_only_shortfall_is_queued_but_other_problems_are_refused(self):
         from local_video import control

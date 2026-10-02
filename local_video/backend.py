@@ -278,7 +278,7 @@ def _infer(command: list[str], work: Path, request: dict, progress: Callable,
     required = start_requirement_gib(runtime, stage_name, limits)
     if start_free < required * 2**30:
         raise MemoryError(f"{stage_name} 시작에 여유 RAM {required}GiB가 필요합니다. 현재 {start_free/2**30:.2f}GiB.")
-    lowest_free = start_free
+    lowest_free, own_peak = start_free, 0
     timeout = float(request.get("maximum_scene_seconds", 7200 if request.get("model_profile") == "wan" else 3600))
     if not all(math.isfinite(v) and v > 0 for v in (cap, reserve, timeout)):
         raise ValueError("메모리와 시간 보호 기준은 유한한 양수여야 합니다.")
@@ -294,6 +294,7 @@ def _infer(command: list[str], work: Path, request: dict, progress: Callable,
                 working, available = _memory(process.pid)
                 reclaimable = _reclaimable(process.pid, working)
                 peak = max(peak, working)
+                own_peak = max(own_peak, working - reclaimable)
                 lowest_free = min(lowest_free, available + reclaimable)
                 if working - reclaimable > cap:
                     raise MemoryError(f"추론 메모리 {working/2**30:.2f}GB가 작업 보호 기준 {cap/2**30:.2f}GB를 초과했습니다. 다른 앱을 닫거나 낮은 설정을 사용하세요.")
@@ -328,7 +329,7 @@ def _infer(command: list[str], work: Path, request: dict, progress: Callable,
             _cancel(is_cancelled)
         finally:
             _stop_owned(process)
-            record_drop(runtime, stage_name, start_free, lowest_free)
+            record_drop(runtime, stage_name, start_free, lowest_free, own_peak)
     return {"inference_seconds": round(time.monotonic()-started, 3),
             "peak_working_set_gib": round(peak/2**30, 3), "inference_log_path": str(log_path)}
 

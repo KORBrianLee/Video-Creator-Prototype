@@ -139,14 +139,18 @@ def learned_drops(root):
         return {}
 
 
-def record_drop(root, stage, start_free_bytes, lowest_free_bytes):
+def record_drop(root, stage, start_free_bytes, lowest_free_bytes, own_peak_bytes=None):
     """Remember how far a stage pulled system free RAM down on this computer.
 
     The drop, not the child's working set, is recorded: mapped model pages are
-    counted in the working set yet stay reclaimable. Older highs decay slowly.
+    counted in the working set yet stay reclaimable. It is capped by the child's
+    own non-reclaimable peak so other programs growing meanwhile are not learned
+    as the stage's need. Older highs decay slowly.
     """
     import json
     drop = start_free_bytes - lowest_free_bytes
+    if own_peak_bytes is not None:
+        drop = min(drop, own_peak_bytes)
     if not root or drop <= 0:
         return
     path = _profile_path(root)
