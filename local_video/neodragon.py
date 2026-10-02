@@ -101,9 +101,22 @@ def first_frame(root, work, scene, settings, request, progress, is_cancelled):
             image.convert("RGB").resize((settings["width"], settings["height"])).save(work / "first-frame.png")
         return {"name": "first_frame", "source": "provided_image", "elapsed_seconds": 0,
                 "state": "completed", "peak_working_set_bytes": 0}
-    binary, assignment, help_text, identity = media._engine({**request, "backend": "cpu", "device_plan": {}}, root)
-    if assignment != "cpu":
-        raise ValueError("첫 장면 엔진은 CPU로만 실행해야 합니다.")
+    if (root / "engines" / "vulkan" / "sd-cli.exe").is_file() and request.get("backend", "auto") != "cpu":
+        try:
+            return _first_frame_attempt(root, work, scene, settings, request, progress, is_cancelled, True)
+        except (MemoryError, InterruptedError, TimeoutError):
+            raise
+        except Exception as exc:
+            progress({"stage": "first_frame_gpu_unavailable", "reason": str(exc)[:300]})
+    return _first_frame_attempt(root, work, scene, settings, request, progress, is_cancelled, False)
+
+
+def _first_frame_attempt(root, work, scene, settings, request, progress, is_cancelled, gpu):
+    """Vulkan GPU first frame when the GPU engine works, otherwise the CPU engine with the same model."""
+    from PIL import Image
+    binary, assignment, help_text, identity = media._engine({**request, "backend": "auto" if gpu else "cpu", "device_plan": {}}, root)
+    if gpu != (assignment != "cpu"):
+        raise RuntimeError("Vulkan GPU를 사용할 수 없어 CPU 첫 장면 엔진으로 전환합니다." if gpu else "첫 장면 CPU 엔진 선택이 올바르지 않습니다.")
     model = media._path_in_runtime(root / "models" / "stable-diffusion-v1-5-Q4_0.gguf", root)
     item = next(f for f in request["_model_spec"]["files"] if f["filename"] == model.name)
     key = first_frame_key(scene, settings, identity, item["sha256"])
@@ -128,16 +141,18 @@ def first_frame(root, work, scene, settings, request, progress, is_cancelled):
         pass
     (work / "prompt.txt").write_text(scene.get("first_frame_prompt", scene["prompt"]), encoding="utf-8")
     (work / "negative.txt").write_text(scene.get("negative_prompt", ""), encoding="utf-8")
-    command = [str(binary), "--mode", "img_gen", "--backend", "cpu", "--params-backend", "disk",
+    command = [str(binary), "--mode", "img_gen", "--backend", "vulkan" if gpu else "cpu", "--params-backend", "disk",
                "--mmap", "--disable-prefetch", "--conditioning-cache-size", "0", "--model", str(model),
                "--prompt-file", str(work / "prompt.txt"), "--negative-prompt-file", str(work / "negative.txt"),
                "--width", str(settings["width"]), "--height", str(settings["height"]),
                "--steps", "20", "--cfg-scale", "7", "--sampling-method", "euler", "--seed", str(scene["seed"]),
-               "--threads", str(request["threads"]), "--output", str(work / "first-frame.png"),
-               "--clip-on-cpu", "--vae-on-cpu", "--vae-tiling", "--vae-tile-size", "256x256", "--diffusion-fa"]
+               "--threads", str(request["threads"]), "--output", str(work / "first-frame.png"), "--diffusion-fa"]
+    if not gpu:
+        command += ["--clip-on-cpu", "--vae-on-cpu", "--vae-tiling", "--vae-tile-size", "256x256"]
     media._validate_flags(command, help_text)
     media._write_json(work / "first-frame-command.json", {"argv": command, "engine_identity": identity})
-    result = media._infer(command, work, request, progress, is_cancelled, 1, 1, 20, stage_name="first_frame")
+    result = media._infer(command, work, request, progress, is_cancelled, 1, 1, 20,
+                          stage_name="first_frame_gpu" if gpu else "first_frame")
     with Image.open(work / "first-frame.png") as image:
         if image.size != (settings["width"], settings["height"]):
             raise RuntimeError("첫 장면 해상도가 요청과 다릅니다.")
@@ -229,12 +244,21 @@ def run_stage(root, work, name, request, progress, is_cancelled):
                 raise RuntimeError(f"단계 {name} 실패. 자세한 기록: {work / (name + '.log')}")
         record["state"] = "completed"
         if name == "video_infer" and request.get("device_plan", {}).get("gpu_inference"):
-            gpu = json.loads((work / "opencl-metrics.json").read_text(encoding="utf-8"))
-            from .resources import GPU_DISCRETE_CEILING
-            ceiling = min(gpu.get("buffer_ceiling_bytes", 0), GPU_DISCRETE_CEILING)
-            if gpu.get("kernel_calls", 0) < 1 or gpu.get("peak_explicit_gpu_buffer_bytes", 2**63) > ceiling:
-                raise RuntimeError("GPU 실행 또는 저메모리 버퍼 상한 증거를 확인하지 못했습니다.")
-            record.update(gpu_inference=True, gpu=gpu)
+            ran_on, device_record = None, {}
+            if (work / "torch-device.json").is_file():
+                device_record = json.loads((work / "torch-device.json").read_text(encoding="utf-8"))
+                ran_on = device_record.get("device")
+            if ran_on in {"xpu", "cuda"}:
+                record.update(gpu_inference=True, gpu={"backend": f"torch_{ran_on}", "scope": "all_video_transformer_ops",
+                                                       "weights": device_record.get("weights"),
+                                                       "peak_gpu_allocated_bytes": device_record.get("peak_gpu_allocated_bytes")})
+            else:
+                gpu = json.loads((work / "opencl-metrics.json").read_text(encoding="utf-8"))
+                from .resources import GPU_DISCRETE_CEILING
+                ceiling = min(gpu.get("buffer_ceiling_bytes", 0), GPU_DISCRETE_CEILING)
+                if gpu.get("kernel_calls", 0) < 1 or gpu.get("peak_explicit_gpu_buffer_bytes", 2**63) > ceiling:
+                    raise RuntimeError("GPU 실행 또는 저메모리 버퍼 상한 증거를 확인하지 못했습니다.")
+                record.update(gpu_inference=True, gpu=gpu)
         return record
     except Exception as exc:
         record.update(state="cancelled" if isinstance(exc, InterruptedError) else "failed", error=str(exc))
@@ -286,6 +310,31 @@ def cached(cache, key, settings, is_cancelled):
         return None
 
 
+def run_stage_adaptive(root, work, name, request, progress, is_cancelled, runner=None):
+    """Run a stage; if its PyTorch GPU backend fails, rerun that stage on the CPU/OpenCL path.
+
+    Memory shortages, cancellation and time limits are not hardware failures and are never retried here.
+    """
+    from . import accelerator
+    runner = runner or run_stage
+    plan = request.get("device_plan", {})
+    backend = plan.get("torch_device")
+    if name not in accelerator.GPU_STAGES or backend not in accelerator.BACKENDS:
+        return runner(root, work, name, request, progress, is_cancelled)
+    try:
+        return runner(root, work, name, request, progress, is_cancelled)
+    except (MemoryError, InterruptedError, TimeoutError):
+        raise
+    except Exception as exc:
+        accelerator.mark_failed(root, backend, f"{name}: {exc}")
+        plan["torch_device"], plan["torch_fallback_reason"] = "cpu", f"{backend} failed in {name}: {str(exc)[:200]}"
+        stage_request = json.loads((work / "request.json").read_text(encoding="utf-8"))
+        stage_request["device_plan"] = plan
+        media._write_json(work / "request.json", stage_request)
+        progress({"stage": "gpu_backend_failed_using_cpu_path", "backend": backend, "step_name": name})
+        return runner(root, work, name, request, progress, is_cancelled)
+
+
 def settings_for(request):
     settings = dict(PRESETS[request["preset"]])
     if request.get("continuous"):
@@ -308,6 +357,10 @@ def generate_project(request, output_dir, cache_dir, model_dir, progress, is_can
     if saved and (selected["backend_assignment"] != saved.get("backend_assignment")
                   or selected.get("selected_device") != saved.get("selected_device")):
         raise RuntimeError("요청 이후 GPU가 바뀌었습니다. 새 작업을 요청하세요.")
+    from . import accelerator
+    choice = accelerator.choose(root, selected.get("selected_device"), request.get("backend", "auto")) if selected.get("gpu_inference") else {}
+    selected["torch_device"] = choice.get("torch_device", "cpu")
+    selected["torch_discrete"] = bool(choice.get("discrete"))
     request["device_plan"] = selected
     output_dir, cache_dir, model_dir = [media._path_in_runtime(Path(p), root) for p in (output_dir, cache_dir, model_dir)]
     for path in (output_dir, cache_dir):
@@ -351,7 +404,7 @@ def generate_project(request, output_dir, cache_dir, model_dir, progress, is_can
             for number, name in enumerate(STAGES):
                 progress({"step": number+2, "steps": len(STAGES)+1})
                 from .conditioning import run_cached
-                phases.append(run_cached(root, work, name, request, progress, is_cancelled, run_stage))
+                phases.append(run_cached(root, work, name, request, progress, is_cancelled, run_stage_adaptive))
             safety = json.loads((work / "safety.json").read_text(encoding="utf-8"))
             if safety.get("unsafe") is not False:
                 raise RuntimeError("필수 안전 검사에서 결과를 거부했습니다.")

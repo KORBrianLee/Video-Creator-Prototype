@@ -92,24 +92,90 @@ class MappedLinearGPU(MappedLinearCPU):
         return torch.from_numpy(result).reshape(*shape, self.out_features)
 
 
-def stream_linears(module, engine=None):
+class MappedLinearTorchGPU(MappedLinearCPU):
+    """Exact BF16 weights, multiplied in FP32 on a PyTorch GPU (CUDA or XPU).
+
+    Streamed mode keeps the weights mapped on the CPU side and uploads one matrix per call.
+    Resident mode (discrete GPUs with enough free VRAM) uploads every matrix once.
+    """
+    stored = None
+    stored_bias = None
+
+    @staticmethod
+    def bitwise_for(device):
+        # The Iris Xe driver's dtype-cast kernels fail while integer copies, shifts, masks and
+        # bit-reinterpreting views work, so Intel GPUs widen BF16 with bit operations.
+        return device.type == "xpu"
+
+    @classmethod
+    def upload(cls, bf16_cpu, device, bitwise=None):
+        bitwise = cls.bitwise_for(device) if bitwise is None else bitwise
+        data = bf16_cpu.detach().contiguous()
+        return data.view(torch.int32).to(device) if bitwise else data.to(device)
+
+    @classmethod
+    def widen_stored(cls, stored, shape, bitwise):
+        """BF16 -> FP32 on the GPU. The bit form is exact: two BF16 values share one 32-bit word and
+        each is the top half of an FP32 word."""
+        if not bitwise:
+            return stored.float()
+        even = (stored << 16).view(torch.float32)
+        odd = (stored & -65536).view(torch.float32)
+        return torch.stack((even, odd), dim=-1).reshape(*shape)
+
+    @classmethod
+    def widen(cls, bf16_cpu, device, bitwise=None):
+        bitwise = cls.bitwise_for(device) if bitwise is None else bitwise
+        return cls.widen_stored(cls.upload(bf16_cpu, device, bitwise), bf16_cpu.shape, bitwise)
+
+    def pin(self, device):
+        """Resident mode: move this matrix to the GPU once."""
+        self.stored = self.upload(self.weight, device)
+        self.stored_bias = self.bias.detach().float().to(device) if self.bias is not None else None
+
+    def forward(self, value):
+        device = value.device
+        bitwise = self.bitwise_for(device)
+        if self.stored is not None:
+            weight, bias = self.widen_stored(self.stored, self.weight.shape, bitwise), self.stored_bias
+        else:
+            weight = self.widen(self.weight, device, bitwise)
+            bias = self.bias.detach().float().to(device) if self.bias is not None else None
+        return functional.linear(value.float(), weight, bias)
+
+
+MappedLinearXPU = MappedLinearTorchGPU
+
+
+def linear_weight_bytes(module):
+    return sum(child.weight.numel() * child.weight.element_size() for child in module.modules() if type(child) is torch.nn.Linear)
+
+
+def stream_linears(module, engine=None, device=None, resident=False):
     count = 0
     for key, child in list(module.named_children()):
         if type(child) is torch.nn.Linear:
-            setattr(module, key, MappedLinearCPU(child) if engine is None else MappedLinearGPU(child, engine))
+            if device is not None and device.type != "cpu":
+                wrapped = MappedLinearTorchGPU(child)
+                if resident:
+                    wrapped.pin(device)
+                setattr(module, key, wrapped)
+            else:
+                setattr(module, key, MappedLinearCPU(child) if engine is None else MappedLinearGPU(child, engine))
             count += 1
         else:
-            count += stream_linears(child, engine)
+            count += stream_linears(child, engine, device, resident)
     return count
 
 
-def float_non_linear_parameters(module):
+def float_non_linear_parameters(module, device=None):
     for child in module.modules():
         if isinstance(child, MappedLinearCPU):
             continue
         for key, value in list(child.named_parameters(recurse=False)):
             if value.is_floating_point():
-                setattr(child, key, torch.nn.Parameter(value.float(), requires_grad=False))
+                value = value.float() if device is None else value.float().to(device)
+                setattr(child, key, torch.nn.Parameter(value, requires_grad=False))
         for key, value in list(child.named_buffers(recurse=False)):
             if value.is_floating_point():
-                setattr(child, key, value.float())
+                setattr(child, key, value.float() if device is None else value.float().to(device))

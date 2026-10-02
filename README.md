@@ -5,13 +5,13 @@
 ## 설치와 업데이트
 
 1. 저장소를 원하는 폴더에 clone한다. 실행 폴더(`C:\CursorVideoRuntime`) 안에 clone하지 않는다.
-2. 처음 한 번 `setup.cmd`를 실행한다. Python·엔진·모델 약 9GB를 해시 검증하며 받고, 현장 참고 자료를 준비하고, 실행 폴더 `C:\CursorVideoRuntime\app`에 배포한다. D 드라이브에 설치하려면 `setup.cmd -RuntimeDir D:\CursorVideoLocal`(그램은 `setup-gram.cmd`).
-3. 이후에는 `update.cmd`만 실행한다. `git pull` 후 코드만 다시 배포하고, lock 파일이 바뀐 경우에만 모델을 받아 검증한다. 실행 폴더의 `video.config.json` 설정은 유지된다.
+2. 처음 한 번 `setup.cmd`를 실행한다. Python·CPU 엔진·Vulkan GPU 엔진·모델 약 9GB를 해시 검증하며 받고, 현장 참고 자료를 준비하고, 실행 폴더 `C:\CursorVideoRuntime\app`에 배포한다. D 드라이브에 설치하려면 `setup.cmd -RuntimeDir D:\CursorVideoLocal`(그램은 `setup-gram.cmd`).
+3. 이후에는 `update.cmd`만 실행한다. `git pull` 후 코드만 다시 배포하고, lock 파일이 바뀐 경우에만 모델을 받아 검증한다. Vulkan GPU 엔진이 없는 PC(예전 설치)는 업데이트할 때 자동으로 받는다. 첫 장면 이미지는 이 엔진으로 GPU에서 만들고, 엔진이 없거나 실패하면 CPU로 자동 전환한다. GPU 엔진을 받지 않으려면 `installer.py ... --no-vulkan`으로 실행한다. 실행 폴더의 `video.config.json` 설정은 유지된다.
 4. Cursor에서 `C:\CursorVideoRuntime\app` 폴더를 열고 `local-video` MCP를 다시 시작한 뒤 `video_doctor`로 확인한다.
 
 Cursor에서 설치된 `app` 폴더를 열고 `local-video` MCP를 사용한다. 대본은 Cursor가 한 번 짧은 장면 지시로 바꾸고, 모델 추론은 컴퓨터에서 진행한다. 외부 제작 GUI·클라우드 생성 API는 사용하지 않는다.
 
-기본 `auto`는 감지한 외장 GPU를 우선 선택하고, 없으면 내장 GPU를 사용한다. Neo 영상 모델의 Linear 연산은 OpenCL GPU에서 계산하고, 텍스트·attention·VAE·안전 검사는 CPU에서 순서대로 실행한다. 전체 모델을 GPU에 올리지 않고 SSD에 매핑한 BF16 행렬 하나씩 전달한다. 드라이버 추가 메모리는 GPU 버퍼 수치에 포함되지 않으며 시스템 여유 RAM을 별도로 감시한다.
+기본 `auto`는 감지한 외장 GPU를 우선 선택하고, 없으면 내장 GPU를 사용한다. 설치기는 이 컴퓨터의 주 GPU를 감지해 맞는 PyTorch GPU 런타임 하나만 받는다(해시 고정, 각각 별도 폴더). NVIDIA는 CUDA(`runtime/cuda-site`, Turing 이상·RTX 50은 CUDA 12.8, Maxwell~Volta는 12.6), Intel 내장·Arc는 XPU(`runtime/xpu-site`)다. AMD와 GPU 없는 PC는 받지 않고 Vulkan·OpenCL·CPU 경로를 쓴다. 설치 직후 GPU 동작 확인에 통과하면 Neo 영상 모델의 트랜스포머(Linear·attention·정규화)와 디코더(3D 컨볼루션)를 그 GPU에서 계산한다. 외장 GPU는 여유 VRAM에 모델 가중치가 들어가면 한 번만 올려 상주시키고, 모자라거나 내장 GPU(공유 RAM)면 단계마다 올린다. 어텐션 조각 크기도 외장은 여유 VRAM, 내장은 여유 RAM에 맞춘다. GPU 단계가 실행 중 실패하면 그 단계를 CPU/OpenCL 경로로 다시 실행하고, 그 백엔드는 1시간 동안 쓰지 않는다. `video_doctor`의 `accelerator`에서 선택 결과와 사유를 볼 수 있다. 첫 장면 이미지는 Vulkan 엔진이 GPU에서 만든다. 전체 모델을 GPU에 올리지 않고 SSD에 매핑한 BF16 행렬을 단계마다 올려 FP32로 펴서 곱한다. 이 인텔 드라이버는 자료형 변환 커널이 실패하고 FP64가 없어서, BF16은 비트 연산으로 정확히 펴고 작은 FP64 텐서는 CPU에서 만든 뒤 FP32로 옮긴다. GPU 커널은 처음 쓸 때 드라이버가 컴파일하므로 첫 실행만 몇 분 더 걸린다. GPU 확인이 실패하면 OpenCL GPU 행렬 연산과 CPU로 자동 전환한다(`--no-gpu-torch`로 설치를 건너뛸 수 있다). CUDA 경로는 이 개발 PC(Intel 내장 GPU)에서 실제 하드웨어로 시험하지 못했고, 코드 논리와 폴백만 테스트로 검증했다. 텍스트 인코더·VAE 인코더·안전 검사는 CPU에서 실행한다. 드라이버 추가 메모리는 GPU 버퍼 수치에 포함되지 않으며 시스템 여유 RAM을 별도로 감시한다.
 
 ## 적응형 자원 한계
 

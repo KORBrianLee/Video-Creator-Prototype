@@ -6,15 +6,24 @@ from types import SimpleNamespace
 SOURCE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SOURCE))
 from installer import d_root, inside
+from local_video import accelerator
 def stage(root, output, name):
+    request = json.loads((output / "request.json").read_text(encoding="utf-8"))
+    plan = request.get("device_plan", {})
+    backend = plan.get("torch_device") if name in accelerator.GPU_STAGES else None
+    if backend in accelerator.BACKENDS and not accelerator.enable(root, backend):
+        backend = None
     import torch
     from PIL import Image
-    torch.set_num_threads(min(8, max(1, json.loads((output / "request.json").read_text(encoding="utf-8")).get("threads", 4))))
+    torch.set_num_threads(min(8, max(1, request.get("threads", 4))))
     torch.set_num_interop_threads(1)
-    torch.manual_seed(json.loads((output / "request.json").read_text(encoding="utf-8"))["seed"])
-    assert torch.version.cuda is None, "Probe requires a CPU-only PyTorch wheel"
+    torch.manual_seed(request["seed"])
+    if backend != "cuda":
+        assert torch.version.cuda is None, "The CPU and XPU stages require a PyTorch build without CUDA"
+    available = backend is not None and getattr(torch, backend).is_available()
+    device = torch.device(backend if available else "cpu")
+    discrete = bool(plan.get("torch_discrete"))
     sys.path.insert(0, str(inside(root, "engines", "experimental-neodragon")))
-    request = json.loads((output / "request.json").read_text(encoding="utf-8"))
     models = inside(root, "models", "experimental-neodragon")
     prompt = request["prompt"] + request.get("prompt_modifier", ", cinematic, realistic textures, high detail, natural colours")
     width, height = request["width"], request["height"]
@@ -120,17 +129,26 @@ def stage(root, output, name):
             from neodragon.pyramid_scheduler import PyramidFlowMatchEulerDiscreteScheduler
             from neodragon.utils import generation_utils as gen
             from local_video.neodragon_quant import quantize_linears, stream_linears, float_non_linear_parameters
+            if device.type == "xpu":
+                accelerator.patch_vendor_for_fp32_gpu(torch)
+            if device.type != "cpu":
+                accelerator.bound_attention_memory(torch, discrete=discrete)
             gpu_engine = None
-            if request.get("device_plan", {}).get("gpu_inference"):
+            weight_mode = "streamed"
+            if device.type == "cpu" and request.get("device_plan", {}).get("gpu_inference"):
                 from local_video.opencl_linear import LinearEngine
                 gpu_engine = LinearEngine(request["device_plan"]["selected_device"]["id"],
                                           buffer_mib=request.get("gpu_buffer_mib", "auto"),
                                           reserve_gib=request.get("reserve_ram_gib", "auto"))
             if request.get("cpu_precision") == "bf16_stream":
                 dit = load_model(PyramidMMDiT, "diffusion_transformer_320p", torch.bfloat16)
-                count = stream_linears(dit, gpu_engine)
-                float_non_linear_parameters(dit)
+                from local_video.neodragon_quant import linear_weight_bytes
+                resident = device.type != "cpu" and accelerator.weights_resident(
+                    linear_weight_bytes(dit), discrete, accelerator.vram_free_bytes(torch, device))
+                count = stream_linears(dit, gpu_engine, device, resident)
+                float_non_linear_parameters(dit, None if device.type == "cpu" else device)
                 dit.eval()
+                weight_mode = "resident" if resident else "streamed"
                 print(json.dumps({"mapped_exact_linear_count": count}), flush=True)
             else:
                 packed = inside(root, "models", "experimental-neodragon", "derived", "transformer-cpu-int8-v2.pt")
@@ -142,8 +160,8 @@ def stage(root, output, name):
                 dit.eval().float()
                 print(json.dumps({"loaded_int8_linear_count": count}), flush=True)
             encoded = read_tensor("video-text.pt")
-            encoded = {key: value.float() if value.is_floating_point() else value for key, value in encoded.items()}
-            first_latent = read_tensor("video-first-latent.pt").float()
+            encoded = {key: (value.float() if value.is_floating_point() else value).to(device) for key, value in encoded.items()}
+            first_latent = read_tensor("video-first-latent.pt").float().to(device)
             cfg = json.loads((models / "causal_video_vae" / "config.json").read_text(encoding="utf-8"))
             cached_vae = SimpleNamespace(config=SimpleNamespace(**cfg),
                 encode=lambda image: SimpleNamespace(latent_dist=SimpleNamespace(sample=lambda: first_latent)))
@@ -154,9 +172,13 @@ def stage(root, output, name):
                                    num_frames=request["frames"], num_inference_steps=[1, 1, 1],
                                    video_num_inference_steps=[1, 1, 1], do_classifier_free_guidance=False,
                                    guidance_scale=0.0, video_guidance_scale=0.0, output_type="latent",
-                                   device=torch.device("cpu"), dtype=torch.float32)
+                                   device=device, dtype=torch.float32)
+            latents = latents.cpu()
             assert torch.isfinite(latents).all(), "Generated latent contains non-finite values"
             torch.save(latents, output / "video-latent.pt")
+            peak_gpu = getattr(torch, device.type).max_memory_allocated() if device.type != "cpu" else 0
+            (output / "torch-device.json").write_text(json.dumps({"stage": name, "device": device.type, "weights": weight_mode,
+                                                                  "peak_gpu_allocated_bytes": peak_gpu}), encoding="utf-8")
             if gpu_engine is not None:
                 metrics = gpu_engine.metrics()
                 if metrics["kernel_calls"] < 1:
@@ -167,7 +189,9 @@ def stage(root, output, name):
         elif name == "video_decode":
             from neodragon.asymmetric_causal_video_vae import AsymmetricCausalVideoVAE
             from neodragon.utils import generation_utils as gen
-            vae = load_model(AsymmetricCausalVideoVAE, "causal_video_vae", torch.float32)
+            if device.type != "cpu":
+                accelerator.bound_attention_memory(torch, discrete=discrete)
+            vae = load_model(AsymmetricCausalVideoVAE, "causal_video_vae", torch.float32).to(device)
             # The official decoder exposes equivalent causal traversal. Its
             # default parallel=True allocates all temporal activations at once.
             from types import MethodType
@@ -177,7 +201,7 @@ def stage(root, output, name):
                                                      parallel=False, show_progress_bar=True)
                 return values[:, decoder.frames_to_trim:].transpose(1, 2)
             vae.decoder.forward = MethodType(sequential_decode, vae.decoder)
-            frames = gen._decode_latent(vae, read_tensor("video-latent.pt").float())
+            frames = gen._decode_latent(vae, read_tensor("video-latent.pt").float().to(device))
             assert len(frames) == request["frames"], "Decoded frame count mismatch"
             for index, frame in enumerate(frames):
                 frame.save(output / f"frame-{index:03d}.png")

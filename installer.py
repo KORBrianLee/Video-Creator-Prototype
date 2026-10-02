@@ -168,12 +168,104 @@ def prepare_site(root, baseline):
     else:
         print(json.dumps({"site_data": "not_prepared", "retry": "update.cmd"}, ensure_ascii=False), flush=True)
 
+TORCH_LOCKS = {"xpu": "neodragon-xpu.lock.json", "cuda128": "neodragon-cuda128.lock.json", "cuda126": "neodragon-cuda126.lock.json"}
+
+
+def torch_runtime_for(vendor, compute_capability=None):
+    """(backend, lock) for the computer's main GPU, or (None, None) when no PyTorch GPU build applies.
+
+    CUDA 12.8 builds cover Turing and newer (including RTX 50); CUDA 12.6 builds keep Maxwell to Volta working.
+    AMD and unknown GPUs keep the Vulkan and OpenCL paths instead of a download that cannot be used.
+    """
+    if vendor == "intel":
+        return "xpu", "xpu"
+    if vendor == "nvidia":
+        return "cuda", "cuda128" if compute_capability is None or compute_capability >= 7.5 else "cuda126"
+    return None, None
+
+
+def nvidia_compute_capability():
+    try:
+        run = subprocess.run(["nvidia-smi", "--query-gpu=compute_cap", "--format=csv,noheader"], capture_output=True,
+                             text=True, timeout=20, creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+        values = [float(line) for line in run.stdout.split() if line.replace(".", "", 1).isdigit()]
+        return max(values) if run.returncode == 0 and values else None
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+
+
+def detect_torch_runtime(root):
+    """Pick the PyTorch GPU runtime from the GPU the planner would choose on this computer."""
+    from local_video import devices
+    try:
+        selected = devices.plan(Path(root), "auto").get("selected_device")
+    except (OSError, RuntimeError, ValueError):
+        selected = None
+    if not selected:
+        return None, None
+    vendor = selected.get("vendor")
+    return torch_runtime_for(vendor, nvidia_compute_capability() if vendor == "nvidia" else None)
+
+
+def torch_runtime_needed(root, profile, no_gpu_torch, detect=detect_torch_runtime):
+    """Runtime folders still to install for this computer's GPU; empty for CPU-only, AMD and opt-out installs."""
+    if profile != "neodragon" or no_gpu_torch or os.name != "nt":
+        return []
+    backend, lock_key = detect(root)
+    if backend is None:
+        return []
+    from local_video import accelerator
+    record = accelerator.site(root, backend) / "install-record.json"
+    try:
+        current = json.loads(record.read_text(encoding="utf-8")).get("lock") == lock_digest(SOURCE / TORCH_LOCKS[lock_key])
+    except (OSError, ValueError):
+        current = False
+    return [] if current else [f"runtime/{accelerator.BACKENDS[backend]['site']}"]
+
+
+def install_torch_runtime(root, detect=detect_torch_runtime):
+    """Hash-pinned install beside the CPU runtime. Failure leaves the CPU/Vulkan/OpenCL paths working."""
+    from local_video import accelerator
+    backend, lock_key = detect(root)
+    if backend is None:
+        return False
+    lock_name = TORCH_LOCKS[lock_key]
+    lock = json.loads((SOURCE / lock_name).read_text(encoding="utf-8"))
+    python = inside(root, "runtime", "neodragon-python", "python.exe")
+    target = inside(root, "runtime", accelerator.BACKENDS[backend]["site"])
+    requirements = inside(root, "tmp", f"{backend}-requirements.txt")
+    requirements.write_text("".join(f'{p["name"]}=={p["version"]} --hash=sha256:{p["sha256"]}\n' for p in lock["packages"]), encoding="utf-8")
+    environment = {**os.environ, "PIP_CACHE_DIR": str(root / "cache" / "pip"), "TMP": str(root / "tmp"), "TEMP": str(root / "tmp")}
+    result = subprocess.run([str(python), "-m", "pip", "install", "--target", str(target), "--upgrade", "--no-deps",
+                             "--require-hashes", "--index-url", lock["index_url"], "--extra-index-url", lock["extra_index_url"],
+                             "--no-warn-script-location", "-r", str(requirements)], env=environment)
+    if result.returncode:
+        print(json.dumps({"gpu_runtime": "not_installed", "backend": backend, "effect": "PyTorch GPU path unavailable; CPU/Vulkan/OpenCL paths are used", "retry": "update.cmd"}, ensure_ascii=False), flush=True)
+        return False
+    (target / "install-record.json").write_text(json.dumps({"lock": lock_digest(SOURCE / lock_name), "lock_name": lock_name}), encoding="utf-8")
+    accelerator._record_path(root, backend).unlink(missing_ok=True)
+    print(json.dumps({"gpu_runtime": "installed", "backend": backend, "gpu_probe": accelerator.probe(root, backend)}, ensure_ascii=False), flush=True)
+    return True
+
+
+def wants_vulkan(profile, no_vulkan):
+    return profile == "wan" or not no_vulkan
+
+
+def missing_engines(root, with_vulkan):
+    """Engine folders an update must download; the Vulkan GPU engine is part of every default install."""
+    return ["engines/vulkan"] if with_vulkan and not (Path(root) / "engines" / "vulkan" / "sd-cli.exe").is_file() else []
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("action", choices=["prepare", "models", "deploy", "all", "update"])
     from local_video.storage import default_runtime
     parser.add_argument("--runtime-dir", default=default_runtime())
-    parser.add_argument("--with-vulkan", action="store_true")
+    parser.add_argument("--with-vulkan", action="store_true", help="kept for old scripts; Vulkan is installed by default")
+    parser.add_argument("--no-vulkan", action="store_true", help="skip the Vulkan GPU engine (CPU only)")
+    parser.add_argument("--no-gpu-torch", "--no-xpu", dest="no_gpu_torch", action="store_true",
+                        help="skip the PyTorch GPU runtime (CUDA or XPU); the video model stays on the CPU/OpenCL path")
     parser.add_argument("--backend", choices=["auto", "gpu", "intel-gpu", "intel-vulkan", "cpu"])
     parser.add_argument("--profile", choices=["neodragon", "lightning", "wan"])
     args = parser.parse_args()
@@ -182,12 +274,13 @@ def main():
         deployed = root / "app" / "video.config.json"
         saved_profile = json.loads(deployed.read_text(encoding="utf-8-sig")).get("model_profile") if deployed.is_file() else None
         args.profile = saved_profile if saved_profile in PROFILE_LOCKS else "neodragon"
+    args.with_vulkan = wants_vulkan(args.profile, args.no_vulkan)
     baseline = installed_digests(root)
     if args.action == "update":
         stale = [name for name in install_locks(args.profile) if baseline.get(name) != lock_digest(SOURCE / name)]
+        stale += missing_engines(root, args.with_vulkan) + torch_runtime_needed(root, args.profile, args.no_gpu_torch)
         print(json.dumps({"update": "full_verify" if stale else "code_only", "changed_locks": stale}), flush=True)
         args.action = "all" if stale else "deploy"
-        args.with_vulkan = True
         verified = not stale
     else:
         verified = False
@@ -210,7 +303,7 @@ def main():
             wheel = root / "downloads" / item["filename"]
             download(item["url"], wheel, item["sha256"], item["size"])
             extract(wheel, inside(root, "runtime", "python", "Lib", "site-packages"))
-        for backend in (["cpu", "vulkan"] if args.with_vulkan or args.profile == "wan" else ["cpu"]):
+        for backend in (["cpu", "vulkan"] if args.with_vulkan else ["cpu"]):
             item = lock["engine"][backend]
             archive = root / "downloads" / item["url"].split("/")[-1]
             download(item["url"], archive, item["sha256"], item["size"])
@@ -222,6 +315,8 @@ def main():
             from local_video.neodragon import runtime_errors
             if runtime_errors(SOURCE, root) or not inside(root, "engines", "experimental-neodragon", "source-provenance.json").is_file():
                 prepare(root, json.loads((SOURCE / "neodragon-research.lock.json").read_text(encoding="utf-8")))
+            if torch_runtime_needed(root, args.profile, args.no_gpu_torch):
+                install_torch_runtime(root)
     if args.action in {"models", "all"}:
         missing_bytes = sum(x["size"] for x in model_lock["files"] if not (root / "models" / x["filename"]).is_file())
         if shutil.disk_usage(root).free < missing_bytes + 2 * 2**30:

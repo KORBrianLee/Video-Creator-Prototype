@@ -245,6 +245,14 @@ def profile_availability(root, profile, files=None):
     return result
 
 
+def accelerator_view(root, selected, backend_setting):
+    from . import accelerator
+    try:
+        return accelerator.describe(root, selected.get("selected_device") if selected.get("gpu_inference") else None, backend_setting)
+    except Exception as exc:  # the doctor must report problems, never fail because of one
+        return {"torch_device": "cpu", "error": str(exc)[:200]}
+
+
 def doctor(verify=False, profile=None):
     cfg, root = load_config()
     profile = profile or cfg["model_profile"]
@@ -314,6 +322,7 @@ def doctor(verify=False, profile=None):
             **mem, "free_disk_gib": free_disk, "model_download_gib": round(sum(x["size"] for x in lock["files"]) / 2**30, 2),
             "minimum_free_ram_gib": minimum, "memory_threshold_is": "adaptive_project_policy_not_official_minimum",
             "resource_plan": resource_plan, "ram_shortfall_only": ram_only,
+            "accelerator": accelerator_view(root, selected, cfg["backend"]) if profile == "neodragon" else None,
             "model_files": model_files, "errors": errors, "target_iris_generation_verified": False,
             "model_profiles": [profile_availability(root, name, model_files if name == profile else None) for name in sorted(PROFILES)],
             "construction": construction_validation(root) if profile == "neodragon" else None,

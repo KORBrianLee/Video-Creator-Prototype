@@ -30,6 +30,58 @@ __kernel void linear_bf16(__global const float *a, __global const ushort *w,
 """
 
 
+def tiled_kernel(tm, tn):
+    """Local-memory GEMM: 16x16 work-items, each owning tm x tn outputs of a (16*tm) x (16*tn) tile.
+
+    Requires K % 4 == 0 (vector loads); the scalar kernel handles every other shape.
+    """
+    bm, bn = 16 * tm, 16 * tn
+    a_loads, w_loads = bm * 4 // 256, bn * 4 // 256
+    lines = ["__kernel __attribute__((reqd_work_group_size(16, 16, 1)))",
+             "void linear_bf16_tiled(__global const float *a, __global const ushort *w,",
+             "                       __global const float *bias, __global float *out,",
+             "                       int M, int N, int K, int has_bias) {",
+             "    const int tx = get_local_id(0), ty = get_local_id(1), tid = ty * 16 + tx;",
+             f"    const int row0 = get_group_id(1) * {bm}, col0 = get_group_id(0) * {bn};",
+             "    const int lr = tid >> 2, lk = (tid & 3) * 4;",
+             f"    __local float As[16][{bm}], Ws[16][{bn}];",
+             f"    float acc[{tm}][{tn}];",
+             f"    for (int i = 0; i < {tm}; ++i) for (int j = 0; j < {tn}; ++j) acc[i][j] = 0.0f;",
+             "    for (int base = 0; base < K; base += 16) {",
+             "        const int kk0 = base + lk;"]
+    for i in range(a_loads):
+        lines += [f"        {{ const int r = lr + {64 * i}; float4 av = (float4)(0.0f);",
+                  "          if (kk0 < K && row0 + r < M) av = vload4(0, a + (size_t)(row0 + r) * K + kk0);",
+                  "          As[lk][r] = av.x; As[lk+1][r] = av.y; As[lk+2][r] = av.z; As[lk+3][r] = av.w; }"]
+    for i in range(w_loads):
+        lines += [f"        {{ const int c = lr + {64 * i}; ushort4 wv = (ushort4)(0);",
+                  "          if (kk0 < K && col0 + c < N) wv = vload4(0, w + (size_t)(col0 + c) * K + kk0);",
+                  "          Ws[lk][c] = as_float(((uint)wv.x) << 16); Ws[lk+1][c] = as_float(((uint)wv.y) << 16);",
+                  "          Ws[lk+2][c] = as_float(((uint)wv.z) << 16); Ws[lk+3][c] = as_float(((uint)wv.w) << 16); }"]
+    lines += ["        barrier(CLK_LOCAL_MEM_FENCE);", "        #pragma unroll", "        for (int k = 0; k < 16; ++k) {"]
+    for i in range(tm // 4):
+        lines.append(f"            const float4 af{i} = vload4(0, &As[k][ty * {tm} + {4 * i}]);")
+    for j in range(tn // 4):
+        lines.append(f"            const float4 wf{j} = vload4(0, &Ws[k][tx * {tn} + {4 * j}]);")
+    for i in range(tm):
+        a = f"af{i // 4}.{'xyzw'[i % 4]}"
+        for j in range(tn):
+            lines.append(f"            acc[{i}][{j}] = fma({a}, wf{j // 4}.{'xyzw'[j % 4]}, acc[{i}][{j}]);")
+    lines += ["        }", "        barrier(CLK_LOCAL_MEM_FENCE);", "    }",
+              f"    for (int i = 0; i < {tm}; ++i) {{",
+              f"        const int row = row0 + ty * {tm} + i;",
+              "        if (row >= M) continue;",
+              f"        for (int j = 0; j < {tn}; ++j) {{",
+              f"            const int col = col0 + tx * {tn} + j;",
+              "            if (col < N) out[(size_t)row * N + col] = acc[i][j] + (has_bias ? bias[col] : 0.0f);",
+              "        }", "    }", "}"]
+    return "\n".join(lines)
+
+
+# 8x4 won on Iris Xe: 8x8 needs 64 accumulators and runs out of registers at SIMD16.
+TILE = (8, 4)
+
+
 def api():
     if os.name != "nt":
         raise RuntimeError("이 포터블 OpenCL 실행은 Windows용입니다.")
@@ -138,8 +190,9 @@ class LinearEngine:
     The budget starts from free RAM (shared GPU) or VRAM (discrete GPU) and,
     on shared memory, halves under RAM pressure and recovers when RAM returns.
     """
-    def __init__(self, requested_id, buffer_mib="auto", reserve_gib="auto"):
+    def __init__(self, requested_id, buffer_mib="auto", reserve_gib="auto", tile=TILE):
         from . import resources
+        self.tile = tuple(tile)
         devices = inventory(with_handles=True)
         matches = [d for d in devices if d["id"] == requested_id]
         if not matches:
@@ -157,6 +210,7 @@ class LinearEngine:
         self.calls, self.uploaded, self.peak, self.seconds = 0, 0, 0, 0.0
         self.allocations, self.reuses, self.releases = 0, 0, 0
         self.linear_calls = 0
+        self.phase_seconds = {"upload": 0.0, "kernel": 0.0, "read": 0.0}
         self.working_set_trims = 0
         self.shrinks, self.grows, self.lowest_budget = 0, 0, self.budget
         error = I()
@@ -167,7 +221,7 @@ class LinearEngine:
             self.queue = self.dll.clCreateCommandQueue(self.context, device, 0, C.byref(error))
             check(error.value, "queue")
             self.resources.append(("clReleaseCommandQueue", self.queue))
-            source = C.c_char_p(KERNEL.encode())
+            source = C.c_char_p((KERNEL + tiled_kernel(*self.tile)).encode())
             self.program = self.dll.clCreateProgramWithSource(self.context, 1, C.byref(source), None, C.byref(error))
             check(error.value, "program")
             self.resources.append(("clReleaseProgram", self.program))
@@ -179,6 +233,9 @@ class LinearEngine:
             self.kernel = self.dll.clCreateKernel(self.program, b"linear_bf16", C.byref(error))
             check(error.value, "kernel")
             self.resources.append(("clReleaseKernel", self.kernel))
+            self.tiled = self.dll.clCreateKernel(self.program, b"linear_bf16_tiled", C.byref(error))
+            check(error.value, "tiled kernel")
+            self.resources.append(("clReleaseKernel", self.tiled))
         except Exception:
             self.close()
             raise
@@ -251,22 +308,37 @@ class LinearEngine:
         layout = self.prepare_buffers({"w": weight_bits.nbytes, "b": bias_values.nbytes,
                                        "a": rows * k * 4, "c": rows * n * 4})
         w, b, a, c = (layout[key] for key in ("w", "b", "a", "c"))
+        phase = time.monotonic()
         for handle, values in [(w, weight_bits), (b, bias_values)]:
             check(self.dll.clEnqueueWriteBuffer(self.queue, handle, 1, 0, values.nbytes, P(values.ctypes.data), 0, None, None), "upload")
             self.uploaded += values.nbytes
+        self.phase_seconds["upload"] += time.monotonic() - phase
         result = np.empty((m, n), dtype=np.float32)
         for position in range(0, m, rows):
             count = min(rows, m-position)
             values = activation[position:position+count]
+            phase = time.monotonic()
             check(self.dll.clEnqueueWriteBuffer(self.queue, a, 1, 0, values.nbytes, P(values.ctypes.data), 0, None, None), "activation upload")
+            self.phase_seconds["upload"] += time.monotonic() - phase
             self.uploaded += values.nbytes
             arguments = [P(a), P(w), P(b), P(c), I(count), I(n), I(k), I(bias is not None)]
+            kernel = self.tiled if k % 4 == 0 else self.kernel
             for index, value in enumerate(arguments):
-                check(self.dll.clSetKernelArg(self.kernel, index, C.sizeof(value), C.byref(value)), "argument")
-            global_size, local_size = (S * 2)((n+15)//16*16, (count+15)//16*16), (S * 2)(16, 16)
-            check(self.dll.clEnqueueNDRangeKernel(self.queue, self.kernel, 2, None, global_size, local_size, 0, None, None), "neural matrix multiplication")
+                check(self.dll.clSetKernelArg(kernel, index, C.sizeof(value), C.byref(value)), "argument")
+            if k % 4 == 0:
+                bm, bn = 16 * self.tile[0], 16 * self.tile[1]
+                global_size = (S * 2)((n+bn-1)//bn*16, (count+bm-1)//bm*16)
+            else:
+                global_size = (S * 2)((n+15)//16*16, (count+15)//16*16)
+            local_size = (S * 2)(16, 16)
+            phase = time.monotonic()
+            check(self.dll.clEnqueueNDRangeKernel(self.queue, kernel, 2, None, global_size, local_size, 0, None, None), "neural matrix multiplication")
+            check(self.dll.clFinish(self.queue), "kernel finish")
+            self.phase_seconds["kernel"] += time.monotonic() - phase
             out = result[position:position+count]
+            phase = time.monotonic()
             check(self.dll.clEnqueueReadBuffer(self.queue, c, 1, 0, out.nbytes, P(out.ctypes.data), 0, None, None), "read result")
+            self.phase_seconds["read"] += time.monotonic() - phase
             self.calls += 1
         self.seconds += time.monotonic() - start
         self.linear_calls += 1
@@ -297,7 +369,8 @@ class LinearEngine:
 
     def metrics(self):
         return {"device": self.device, "kernel_calls": self.calls, "uploaded_bytes": self.uploaded,
-                "linear_calls": self.linear_calls, "buffer_allocations": self.allocations,
+                "linear_calls": self.linear_calls, "tile": list(self.tile),
+                "phase_seconds": {key: round(value, 3) for key, value in self.phase_seconds.items()}, "buffer_allocations": self.allocations,
                 "buffer_reuses": self.reuses, "buffer_releases": self.releases,
                 "buffer_policy": "reuse_capacity_overwrite_every_tensor_within_adaptive_cap" if self.adaptive else "reuse_capacity_overwrite_every_tensor_within_fixed_cap",
                 "peak_explicit_gpu_buffer_bytes": self.peak, "buffer_limit_bytes": self.budget,

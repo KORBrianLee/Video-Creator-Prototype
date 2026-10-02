@@ -36,6 +36,56 @@ class DeploymentTests(unittest.TestCase):
         self.assertIn("local-video", result["mcpServers"])
         self.assertEqual(json.loads(resource.read_text(encoding="utf-8"))["threads"], 2)
 
+    def test_default_install_requires_vulkan_engine_and_update_fetches_it_when_missing(self):
+        self.assertEqual(installer.missing_engines(self.root, True), ["engines/vulkan"])
+        self.assertEqual(installer.missing_engines(self.root, False), [])
+        engine = self.root / "engines" / "vulkan"
+        engine.mkdir(parents=True)
+        (engine / "sd-cli.exe").write_bytes(b"x")
+        self.assertEqual(installer.missing_engines(self.root, True), [])
+
+    def test_every_torch_gpu_lock_is_hash_pinned_and_matches_its_backend(self):
+        expected = {"xpu": "+xpu", "cuda128": "+cu128", "cuda126": "+cu126"}
+        for key, suffix in expected.items():
+            lock = json.loads((installer.SOURCE / installer.TORCH_LOCKS[key]).read_text(encoding="utf-8"))
+            torch = next(p for p in lock["packages"] if p["name"] == "torch")
+            self.assertTrue(torch["version"].endswith(suffix), key)
+            self.assertTrue(all(len(p["sha256"]) == 64 for p in lock["packages"]), key)
+            self.assertTrue(lock["index_url"].startswith("https://download.pytorch.org/whl/"), key)
+
+    def test_the_downloaded_runtime_follows_the_main_gpu_vendor(self):
+        self.assertEqual(installer.torch_runtime_for("intel"), ("xpu", "xpu"))
+        self.assertEqual(installer.torch_runtime_for("nvidia", 8.9), ("cuda", "cuda128"))
+        self.assertEqual(installer.torch_runtime_for("nvidia", 12.0), ("cuda", "cuda128"))
+        self.assertEqual(installer.torch_runtime_for("nvidia", 6.1), ("cuda", "cuda126"))
+        self.assertEqual(installer.torch_runtime_for("nvidia", None), ("cuda", "cuda128"))
+        self.assertEqual(installer.torch_runtime_for("amd"), (None, None))
+        self.assertEqual(installer.torch_runtime_for("other"), (None, None))
+
+    def test_torch_runtime_is_only_requested_for_a_matching_gpu_and_tracks_its_lock(self):
+        intel = lambda root: ("xpu", "xpu")
+        nvidia = lambda root: ("cuda", "cuda128")
+        nothing = lambda root: (None, None)
+        needed = lambda detect, profile="neodragon", skip=False: installer.torch_runtime_needed(self.root, profile, skip, detect)
+        self.assertEqual(needed(intel), ["runtime/xpu-site"])
+        self.assertEqual(needed(nvidia), ["runtime/cuda-site"])
+        self.assertEqual(needed(nothing), [])
+        self.assertEqual(needed(intel, skip=True), [])
+        self.assertEqual(needed(intel, profile="lightning"), [])
+        folder = self.root / "runtime" / "xpu-site"
+        folder.mkdir(parents=True)
+        (folder / "install-record.json").write_text(json.dumps({"lock": "old"}), encoding="utf-8")
+        self.assertEqual(needed(intel), ["runtime/xpu-site"])
+        current = installer.lock_digest(installer.SOURCE / installer.TORCH_LOCKS["xpu"])
+        (folder / "install-record.json").write_text(json.dumps({"lock": current}), encoding="utf-8")
+        self.assertEqual(needed(intel), [])
+        self.assertEqual(needed(nvidia), ["runtime/cuda-site"])
+
+    def test_vulkan_is_default_and_can_be_skipped_only_explicitly(self):
+        self.assertTrue(installer.wants_vulkan("neodragon", False))
+        self.assertFalse(installer.wants_vulkan("neodragon", True))
+        self.assertTrue(installer.wants_vulkan("wan", True))
+
     def test_malformed_existing_mcp_config_is_not_overwritten(self):
         path = self.app / ".cursor" / "mcp.json"
         path.write_text("[]", encoding="utf-8")

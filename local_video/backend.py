@@ -93,10 +93,12 @@ def _memory(process_id: int) -> tuple[int, int]:
 
 
 def _reclaimable(process_id: int, working: int) -> int:
-    """Lower bound of the working set Windows can drop without pagefile writes.
+    """Part of the working set Windows can drop without pagefile writes.
 
     Memory-mapped model pages are file-backed: under pressure they are discarded
     and re-read, unlike private memory, which would be written to the pagefile.
+    The private working set (shared pages excluded) is the exact measure; commit
+    charge is wrong here because copy-on-write mappings are charged in full.
     """
     if os.name != "nt" or working <= 0:
         return 0
@@ -105,7 +107,9 @@ def _reclaimable(process_id: int, working: int) -> int:
                     ("peak", ctypes.c_size_t), ("working", ctypes.c_size_t),
                     ("peak_page", ctypes.c_size_t), ("page", ctypes.c_size_t),
                     ("peak_nonpage", ctypes.c_size_t), ("nonpage", ctypes.c_size_t),
-                    ("pagefile", ctypes.c_size_t), ("peak_pagefile", ctypes.c_size_t)]
+                    ("pagefile", ctypes.c_size_t), ("peak_pagefile", ctypes.c_size_t),
+                    ("private_usage", ctypes.c_size_t), ("private_working", ctypes.c_ulonglong),
+                    ("shared_commit", ctypes.c_ulonglong)]
     kernel = ctypes.WinDLL("kernel32", use_last_error=True)
     kernel.OpenProcess.argtypes = [ctypes.c_ulong, ctypes.c_int, ctypes.c_ulong]
     kernel.OpenProcess.restype = ctypes.c_void_p
@@ -118,9 +122,13 @@ def _reclaimable(process_id: int, working: int) -> int:
         counters.cb = ctypes.sizeof(counters)
         psapi = ctypes.WinDLL("psapi", use_last_error=True)
         psapi.GetProcessMemoryInfo.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_ulong]
-        if not psapi.GetProcessMemoryInfo(handle, ctypes.byref(counters), counters.cb):
+        if psapi.GetProcessMemoryInfo(handle, ctypes.byref(counters), counters.cb) and counters.private_working:
+            return max(0, working - counters.private_working)
+        legacy = Counters()
+        legacy.cb = Counters.pagefile.offset + Counters.pagefile.size + ctypes.sizeof(ctypes.c_size_t)
+        if not psapi.GetProcessMemoryInfo(handle, ctypes.byref(legacy), legacy.cb):
             return 0
-        return max(0, working - counters.pagefile)
+        return max(0, working - legacy.pagefile)
     finally:
         kernel.CloseHandle(handle)
 
