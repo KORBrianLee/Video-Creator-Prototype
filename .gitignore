@@ -4,3 +4,4 @@ __pycache__/
 video-creator.config.json
 video-projects/
 runtime-dir.txt
+.review/

@@ -23,7 +23,18 @@ def main():
         if name == "wait":
             item.add_argument("--seconds", type=int, default=45)
     sub.add_parser("list")
+    digest = sub.add_parser("digest", help="완료 작업의 짧은 요약과 화면 붕괴·정지 경고(에이전트용, 2KB 이하)")
+    digest.add_argument("job_id")
+    plan = sub.add_parser("plan", help="고정 계획을 로컬에서 끝까지 실행하고 요약 하나만 출력(백그라운드 실행용)")
+    plan.add_argument("plan_file", type=Path)
+    frames = sub.add_parser("frames", help="한 장면의 첫 프레임 후보를 시드별로 만들고 비교 이미지 하나로 묶기")
+    frames.add_argument("spec_file", type=Path)
     args = parser.parse_args()
+    try:
+        from local_video.storage import cache_environment
+        os.environ.update(cache_environment(control.load_config()[1]))
+    except Exception:
+        pass
     try:
         if args.action == "doctor":
             result = control.doctor(args.verify)
@@ -36,6 +47,15 @@ def main():
             result = control.list_jobs()
         elif args.action == "wait":
             result = control.wait(args.job_id, args.seconds)
+        elif args.action == "digest":
+            from local_video.digest import job_digest
+            result = job_digest(args.job_id)
+        elif args.action == "plan":
+            from local_video.plan_runner import main as run_plan
+            result = run_plan(args.plan_file)
+        elif args.action == "frames":
+            from local_video.frame_pick import main as pick_frames
+            result = pick_frames(args.spec_file)
         else:
             result = getattr(control, args.action)(args.job_id)
         print(json.dumps(result, ensure_ascii=False))

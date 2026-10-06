@@ -20,6 +20,8 @@ import uuid
 from typing import Callable
 
 ENGINE_VERSION = "local-video-cpp-v3-gpu"
+# One continuous generation per request; longer clips are never made by joining shorter ones.
+DURATIONS = (2, 4, 8, 10, 15)
 PRESETS = {
     "lightning": {
         "smoke": {"width": 256, "height": 256, "frames": 8, "steps": 4, "fps": 8, "vae_tile_size": "256x256"},
@@ -88,6 +90,33 @@ def _memory(process_id: int) -> tuple[int, int]:
         if not psapi.GetProcessMemoryInfo(handle, ctypes.byref(counters), counters.cb):
             raise OSError("추론 프로세스 메모리를 읽을 수 없습니다.")
         return counters.working, status.available
+    finally:
+        kernel.CloseHandle(handle)
+
+
+def _commit(process_id: int) -> int:
+    """Private commit charge (what a Windows Job memory limit counts), 0 when unavailable."""
+    if os.name != "nt":
+        return 0
+    class Counters(ctypes.Structure):
+        _fields_ = [("cb", ctypes.c_ulong), ("faults", ctypes.c_ulong),
+                    ("peak", ctypes.c_size_t), ("working", ctypes.c_size_t),
+                    ("peak_page", ctypes.c_size_t), ("page", ctypes.c_size_t),
+                    ("peak_nonpage", ctypes.c_size_t), ("nonpage", ctypes.c_size_t),
+                    ("pagefile", ctypes.c_size_t), ("peak_pagefile", ctypes.c_size_t)]
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.OpenProcess.argtypes = [ctypes.c_ulong, ctypes.c_int, ctypes.c_ulong]
+    kernel.OpenProcess.restype = ctypes.c_void_p
+    kernel.CloseHandle.argtypes = [ctypes.c_void_p]
+    handle = kernel.OpenProcess(0x1000 | 0x0010, False, process_id)
+    if not handle:
+        return 0
+    try:
+        counters = Counters()
+        counters.cb = ctypes.sizeof(counters)
+        psapi = ctypes.WinDLL("psapi", use_last_error=True)
+        psapi.GetProcessMemoryInfo.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_ulong]
+        return counters.pagefile if psapi.GetProcessMemoryInfo(handle, ctypes.byref(counters), counters.cb) else 0
     finally:
         kernel.CloseHandle(handle)
 
@@ -277,19 +306,20 @@ def _infer(command: list[str], work: Path, request: dict, progress: Callable,
     temporary_root = _path_in_runtime(runtime / "tmp", runtime.resolve())
     env.update(TEMP=str(temporary_root), TMP=str(temporary_root), TMPDIR=str(temporary_root))
     temporary_root.mkdir(parents=True, exist_ok=True)
-    from .resources import (CpuLimitMonitor, PressureGuard, record_drop, run_unthrottled, stage_limits,
-                            start_requirement_gib, wait_for_cooling)
+    from .resources import (CpuLimitMonitor, ElasticGuard, LowMemoryMode, commit_bytes, commit_floor, is_auto,
+                            learned_need_bytes, record_drop, run_unthrottled, stage_limits, wait_for_commit,
+                            wait_for_cooling)
     limits = stage_limits(request)
-    cap = limits["maximum_working_set_gib"] * 2**30
+    manual_cap = request.get("maximum_working_set_gib")
+    cap = None if is_auto(manual_cap) else float(manual_cap) * 2**30
     reserve = limits["reserve_ram_gib"] * 2**30
-    guard = PressureGuard(reserve)
+    # Elastic memory: no free-RAM gate. Commit must cover the learned need; tight RAM only slows the engine.
+    wait_for_commit(learned_need_bytes(runtime, stage_name), is_cancelled, progress)
+    guard = ElasticGuard(reserve, commit_floor(commit_bytes()[0]))
     _, start_free = _memory(os.getpid())
-    required = start_requirement_gib(runtime, stage_name, limits)
-    if start_free < required * 2**30:
-        raise MemoryError(f"{stage_name} 시작에 여유 RAM {required}GiB가 필요합니다. 현재 {start_free/2**30:.2f}GiB.")
     lowest_free, own_peak = start_free, 0
     timeout = float(request.get("maximum_scene_seconds", 7200 if request.get("model_profile") == "wan" else 3600))
-    if not all(math.isfinite(v) and v > 0 for v in (cap, reserve, timeout)):
+    if not all(math.isfinite(v) and v > 0 for v in (reserve, timeout)) or (cap is not None and not cap > 0):
         raise ValueError("메모리와 시간 보호 기준은 유한한 양수여야 합니다.")
     flags = (subprocess.CREATE_NO_WINDOW | subprocess.BELOW_NORMAL_PRIORITY_CLASS) if os.name == "nt" else 0
     monitor = CpuLimitMonitor()
@@ -301,6 +331,7 @@ def _infer(command: list[str], work: Path, request: dict, progress: Callable,
         process = subprocess.Popen(command, stdout=log, stderr=log, stdin=subprocess.DEVNULL,
                                    cwd=work, env=env, shell=False, creationflags=flags)
         run_unthrottled(getattr(process, "_handle", None))
+        low_memory = LowMemoryMode(process.pid)
         try:
             while process.poll() is None:
                 _cancel(is_cancelled)
@@ -309,10 +340,10 @@ def _infer(command: list[str], work: Path, request: dict, progress: Callable,
                 peak = max(peak, working)
                 own_peak = max(own_peak, working - reclaimable)
                 lowest_free = min(lowest_free, available + reclaimable)
-                if working - reclaimable > cap:
-                    raise MemoryError(f"추론 메모리 {working/2**30:.2f}GB가 작업 보호 기준 {cap/2**30:.2f}GB를 초과했습니다. 다른 앱을 닫거나 낮은 설정을 사용하세요.")
+                if cap is not None and working - reclaimable > cap:
+                    raise MemoryError(f"추론 메모리 {working/2**30:.2f}GB가 사용자 지정 상한 {cap/2**30:.2f}GB를 초과했습니다.")
                 now = time.monotonic()
-                pressured = guard.check(available + reclaimable, now)
+                pressured = low_memory.update(guard.check(available + reclaimable, commit_bytes()[1], now), now)
                 if now - started > timeout:
                     raise TimeoutError("장면 생성 시간 보호 기준을 넘었습니다. 완료된 장면 캐시는 유지됩니다.")
                 if now - last_progress >= 2:

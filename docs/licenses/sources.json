@@ -98,6 +98,22 @@
     "Acquired": "2026-10-01"
   },
   {
+    "File": "LTX-Video-Open-Weights-License-0.X.txt",
+    "Source": "https://huggingface.co/Lightricks/LTX-Video/resolve/8984fa25007f376c1a299016d0957a37a2f797bb/LTX-Video-Open-Weights-License-0.X.txt",
+    "Bytes": 14536,
+    "SHA256": "30eabbcc090dd3bd70cffaa14338142df82f348f7bd91b2f63f0c6099ccf50e0",
+    "Acquired": "2026-10-02",
+    "Terms": "Royalty-free for any lawful purpose under the Attachment A use restrictions; entities with annual revenue of USD 10M or more need a paid commercial license for commercial use."
+  },
+  {
+    "File": "SkyReels-V2-Skywork-LICENSE.txt",
+    "Source": "https://huggingface.co/Skywork/SkyReels-V2-DF-1.3B-540P-Diffusers/resolve/958acd63685c7e632e4b194549f2a703e34bd98b/LICENSE",
+    "Bytes": 3179,
+    "SHA256": "62fd7840fe6fa183a9dfce39a427233e8b90b849f96b724e949a09c1c30ca643",
+    "Acquired": "2026-10-02",
+    "Terms": "Skywork Community License; commercial use allowed without a separate application if its terms are followed; no use for unlawful or security-threatening activity; internet services need appropriate security review."
+  },
+  {
     "File": "ggml-diagnostic-841-MIT-LICENSE.txt",
     "Source": "Installed D:\\CursorVideoLocal\\engines\\diagnostic-841\\ggml.txt, official master-841-6b3edaa CPU release",
     "Bytes": 1099,

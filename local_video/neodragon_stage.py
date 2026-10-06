@@ -15,6 +15,8 @@ def stage(root, output, name):
         backend = None
     import torch
     from PIL import Image
+    from local_video import readonly_weights
+    readonly_weights.install(transformers=name in {"first_text", "video_text"})
     torch.set_num_threads(min(8, max(1, request.get("threads", 4))))
     torch.set_num_interop_threads(1)
     torch.manual_seed(request["seed"])

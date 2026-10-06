@@ -33,13 +33,21 @@ class SiteTests(unittest.TestCase):
             neodragon.settings_for({**value, "preset": "preview", "duration_seconds": 4})
 
     def test_lengths_have_causal_frame_count_without_fps_slowdown(self):
-        for seconds, frames in [(2, 49), (4, 97), (8, 193)]:
+        for seconds, frames in [(2, 49), (4, 97), (8, 193), (10, 241), (15, 361)]:
             request = self.normalize({"site_template": "loader_guidance", "duration_seconds": seconds})
             settings = neodragon.settings_for(request)
             self.assertEqual((settings["frames"], settings["fps"]), (frames, 24))
-            self.assertLess(settings["frames"], 200)
+            # Neo's temporal position limit is 200 latent frames (8 video frames each).
+            self.assertLess((frames - 1) // 8 + 1, 200)
             self.assertEqual((frames-1) % 8, 0)
             self.assertEqual(request["maximum_working_set_gib"], 5.0)
+
+    def test_stage_time_limit_grows_with_clip_length(self):
+        self.assertEqual(neodragon.stage_time_limit({"continuous": False}), 1800)
+        self.assertEqual(neodragon.stage_time_limit({"continuous": True, "duration_seconds": 8}), 3860)
+        self.assertEqual(neodragon.stage_time_limit({"continuous": True, "duration_seconds": 15}), 7220)
+        self.assertEqual(neodragon.stage_time_limit({"maximum_scene_seconds": 60, "continuous": True, "duration_seconds": 15}), 60)
+        self.assertEqual(neodragon.stage_time_limit({"threads": 4}), 1800)
 
     def test_invalid_lengths_and_conflicting_input_rejected(self):
         for extra in [{"duration_seconds": True}, {"duration_seconds": 16}, {"continuous": "true"},

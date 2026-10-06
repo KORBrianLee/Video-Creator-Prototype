@@ -136,6 +136,13 @@ class ControllerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             control.normalize({**self.request, "model_profile": "unsupported"})
 
+    def test_anchor_end_is_optional_and_bounded(self):
+        self.assertNotIn("anchor_end", control.normalize(self.request))
+        self.assertEqual(control.normalize({**self.request, "anchor_end": 0.5})["anchor_end"], 0.5)
+        for bad in (0, 1.5, True, "0.5"):
+            with self.assertRaises(ValueError):
+                control.normalize({**self.request, "anchor_end": bad})
+
     def test_normalize_rejects_invalid_inputs_and_scene_path_escape(self):
         cases = [None, [], {**self.request, "seed": True}, {**self.request, "seed": -1},
                  {**self.request, "preset": "unknown"}, {**self.request, "scenes": []},
@@ -252,7 +259,7 @@ class ControllerTests(unittest.TestCase):
         spawn.assert_not_called()
         self.assertFalse((self.root / "jobs").exists())
 
-    def test_wan_readiness_needs_more_free_ram_than_lightning(self):
+    def test_wan_runs_in_low_memory_mode_below_its_recommended_free_ram(self):
         engine = self.root / "engines" / "cpu" / "sd-cli.exe"
         engine.parent.mkdir(parents=True)
         engine.write_bytes(b"test-only-marker-never-executed")
@@ -264,8 +271,11 @@ class ControllerTests(unittest.TestCase):
         self.assertTrue(lightning["ready"])
         self.assertFalse(lightning["ready_for_generation"])
         self.assertEqual(lightning["quality_status"], "failed_visual_validation")
-        self.assertFalse(wan["ready"])
+        # Elastic memory: 7 GiB free is below Wan's recommendation, so it runs slower, not refused.
+        self.assertTrue(wan["ready"])
         self.assertGreaterEqual(wan["minimum_free_ram_gib"], 8.0)
+        self.assertTrue(wan["resource_plan"]["low_memory_mode"])
+        self.assertFalse(lightning["resource_plan"]["low_memory_mode"])
         self.assertEqual(wan["model_license"], "Apache-2.0")
 
     def test_request_hash_changes_when_generation_settings_change(self):
@@ -533,6 +543,36 @@ class ControllerTests(unittest.TestCase):
         self.assertIsNone(second.stream)
 
 
+class WriteJsonTests(unittest.TestCase):
+    def test_retries_while_a_reader_holds_the_file(self):
+        real_replace, calls = os.replace, []
+
+        def flaky(source, target):
+            calls.append(target)
+            if len(calls) < 8:
+                raise PermissionError("busy")
+            real_replace(source, target)
+
+        with tempfile.TemporaryDirectory(dir=os.environ.get("TEMP")) as folder, \
+                patch.object(control.os, "replace", flaky), patch.object(control.time, "sleep"):
+            target = Path(folder) / "status.json"
+            control.write_json(target, {"state": "running"})
+            self.assertEqual(json.loads(target.read_text(encoding="utf-8"))["state"], "running")
+            self.assertEqual(len(calls), 8)
+
+    def test_writes_in_place_when_rename_stays_blocked(self):
+        def blocked(source, target):
+            raise PermissionError("held by scanner")
+
+        with tempfile.TemporaryDirectory(dir=os.environ.get("TEMP")) as folder, \
+                patch.object(control.os, "replace", blocked), patch.object(control.time, "sleep"):
+            target = Path(folder) / "status.json"
+            target.write_text("{}", encoding="utf-8")
+            control.write_json(target, {"state": "completed"})
+            self.assertEqual(control.read_json(target)["state"], "completed")
+            self.assertEqual([p.name for p in Path(folder).iterdir()], ["status.json"])
+
+
 class MCPTests(unittest.TestCase):
     """표준 입출력의 응답 형식만 확인하며 영상 생성은 모의 호출한다."""
 
@@ -616,7 +656,7 @@ class MCPTests(unittest.TestCase):
             "io.modelcontextprotocol/clientCapabilities": {}}}}
         result = self.exchange((json.dumps(request)+"\n").encode())
         self.assertEqual(result[0]["result"]["resultType"], "complete")
-        self.assertEqual(len(result[0]["result"]["tools"]), 6)
+        self.assertEqual(len(result[0]["result"]["tools"]), 7)
 
     def test_modern_missing_capabilities_is_rejected(self):
         request = {"jsonrpc": "2.0", "id": 9, "method": "tools/list", "params": {"_meta": {

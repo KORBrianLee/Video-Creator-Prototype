@@ -97,19 +97,33 @@ class DeviceTests(unittest.TestCase):
         self.assertEqual(engine.budget, 128 * mib)
         self.assertEqual(engine.lowest_budget, resources.GPU_FLOOR)
 
-    def test_short_ram_dip_is_tolerated_but_sustained_or_severe_shortage_stops(self):
+    def test_tight_ram_only_switches_to_low_memory_mode_while_commit_exhaustion_stops(self):
         from local_video import resources
         gib = 2**30
-        guard = resources.PressureGuard(1.5 * gib, grace_seconds=15)
-        self.assertFalse(guard.check(3 * gib, 0))
-        self.assertTrue(guard.check(1.3 * gib, 1))
-        self.assertTrue(guard.check(1.3 * gib, 10))
-        self.assertFalse(guard.check(2 * gib, 11))
-        self.assertTrue(guard.check(1.3 * gib, 12))
-        with self.assertRaisesRegex(MemoryError, "초 넘게"):
-            guard.check(1.3 * gib, 28)
-        with self.assertRaisesRegex(MemoryError, "즉시 중지"):
-            resources.PressureGuard(1.5 * gib).check(1.0 * gib, 0)
+        guard = resources.ElasticGuard(1.5 * gib, 1.4 * gib, grace_seconds=15)
+        self.assertFalse(guard.check(3 * gib, 14 * gib, 0))
+        # Any amount of physical RAM shortage, for any time, keeps running in low-memory mode.
+        for now in range(1, 200, 20):
+            self.assertTrue(guard.check(0.2 * gib, 14 * gib, now))
+        self.assertGreater(guard.tight_events, 5)
+        # Commit below the floor is tolerated briefly, then stops; far below stops at once.
+        self.assertFalse(guard.check(3 * gib, 1.2 * gib, 300))
+        with self.assertRaisesRegex(MemoryError, "commit"):
+            guard.check(3 * gib, 1.2 * gib, 316)
+        with self.assertRaisesRegex(MemoryError, "commit"):
+            resources.ElasticGuard(1.5 * gib, 1.4 * gib).check(3 * gib, 0.5 * gib, 0)
+        self.assertEqual(resources.commit_floor(34 * gib), int(34 * gib * 0.04))
+        self.assertEqual(resources.commit_floor(8 * gib), int(0.75 * gib))
+
+    def test_low_memory_mode_trims_at_most_every_interval(self):
+        from local_video import resources
+        trims = []
+        mode = resources.LowMemoryMode(42, interval=10, trim=lambda pid: trims.append(pid) or True)
+        for now in (0, 3, 9, 10, 15, 21):
+            mode.update(True, now)
+        mode.update(False, 40)
+        self.assertEqual(trims, [42, 42, 42])
+        self.assertEqual(mode.trims, 3)
 
     def test_start_requirement_learns_each_stage_ram_drop_on_this_computer(self):
         import tempfile
@@ -123,6 +137,15 @@ class DeviceTests(unittest.TestCase):
             self.assertEqual(resources.start_requirement_gib(folder, "video_text", limits), 3.0)
             resources.record_drop(folder, "video_text", int(4 * gib), int(3.5 * gib))
             self.assertGreater(resources.start_requirement_gib(folder, None, limits), 3.5)
+            # Needs are learned per clip length: an 8s decode does not set the bar for a 2s clip.
+            resources.record_drop(folder, "video_decode", int(6 * gib), int(1.9 * gib), frames=193)
+            resources.record_drop(folder, "video_decode", int(6 * gib), int(4.9 * gib), frames=49)
+            self.assertAlmostEqual(resources.learned_drops(folder)["video_decode@8s"], 4.1, places=1)
+            self.assertAlmostEqual(resources.start_requirement_gib(folder, "video_decode", limits, 49), 3.0)
+            self.assertGreater(resources.start_requirement_gib(folder, "video_decode", limits, 193), 5.0)
+            self.assertLess(resources.start_requirement_gib(folder, None, limits, 49),
+                            resources.start_requirement_gib(folder, None, limits, 193))
+            self.assertEqual(resources.length_bucket(361), "long")
             resources.record_drop(folder, "first_frame", int(3 * gib), int(2 * gib))
             self.assertAlmostEqual(resources.learned_drops(folder)["first_frame"], 2.07, places=2)
             resources.record_drop(folder, "video_infer", int(5 * gib), int(1 * gib), own_peak_bytes=int(1.5 * gib))

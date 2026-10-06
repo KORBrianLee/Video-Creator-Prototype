@@ -1,0 +1,136 @@
+{
+  "model": "LTX-Video 2B 0.9.8 distilled",
+  "folder": "ltx-video-2b-0.9.8",
+  "revision": "8984fa25007f376c1a299016d0957a37a2f797bb",
+  "license": "LTX-Video OpenRail-M (ltxv-2b-0.9.8-distilled); free for entities under 10M USD annual revenue, use restrictions apply; see docs/licenses",
+  "note": "Single-file BF16 transformer+VAE loaded with the LTX-Video 0.9.5 Diffusers configs (same 2B architecture). The T5-XXL text encoder is published in FP32; the installer rewrites each shard as BF16.",
+  "download_bytes": 25390854519,
+  "files": [
+    {
+      "repo": "Lightricks/LTX-Video",
+      "revision": "8984fa25007f376c1a299016d0957a37a2f797bb",
+      "source": "ltxv-2b-0.9.8-distilled.safetensors",
+      "path": "ltxv-2b-0.9.8-distilled.safetensors",
+      "size": 6340744492,
+      "sha256": "76aa8c4786af752fa6f951947129d5290c3c6c0b2fadcadea6b5e114ae2cad8f",
+      "convert_to_bf16": false
+    },
+    {
+      "repo": "Lightricks/LTX-Video",
+      "revision": "8984fa25007f376c1a299016d0957a37a2f797bb",
+      "source": "text_encoder/config.json",
+      "path": "text_encoder/config.json",
+      "size": 781,
+      "sha256": "e8425c7fb4b09361c160eba83f89f3b3186d69bb189a8d67ad6bee8a160479a0",
+      "convert_to_bf16": false
+    },
+    {
+      "repo": "Lightricks/LTX-Video",
+      "revision": "8984fa25007f376c1a299016d0957a37a2f797bb",
+      "source": "text_encoder/model-00001-of-00004.safetensors",
+      "path": "text_encoder/model-00001-of-00004.safetensors",
+      "size": 4989319680,
+      "sha256": "7a68b2c8c080696a10109612a649bc69330991ecfea65930ccfdfbdb011f2686",
+      "convert_to_bf16": true
+    },
+    {
+      "repo": "Lightricks/LTX-Video",
+      "revision": "8984fa25007f376c1a299016d0957a37a2f797bb",
+      "source": "text_encoder/model-00002-of-00004.safetensors",
+      "path": "text_encoder/model-00002-of-00004.safetensors",
+      "size": 4999830656,
+      "sha256": "b8ed6556d7507e38af5b428c605fb2a6f2bdb7e80bd481308b865f7a40c551ca",
+      "convert_to_bf16": true
+    },
+    {
+      "repo": "Lightricks/LTX-Video",
+      "revision": "8984fa25007f376c1a299016d0957a37a2f797bb",
+      "source": "text_encoder/model-00003-of-00004.safetensors",
+      "path": "text_encoder/model-00003-of-00004.safetensors",
+      "size": 4865612720,
+      "sha256": "c831635f83041f83faf0024b39c6ecb21b45d70dd38a63ea5bac6c7c6e5e558c",
+      "convert_to_bf16": true
+    },
+    {
+      "repo": "Lightricks/LTX-Video",
+      "revision": "8984fa25007f376c1a299016d0957a37a2f797bb",
+      "source": "text_encoder/model-00004-of-00004.safetensors",
+      "path": "text_encoder/model-00004-of-00004.safetensors",
+      "size": 4194506688,
+      "sha256": "02a5f2d69205be92ad48fe5d712d38c2ff55627969116aeffc58bd75a28da468",
+      "convert_to_bf16": true
+    },
+    {
+      "repo": "Lightricks/LTX-Video",
+      "revision": "8984fa25007f376c1a299016d0957a37a2f797bb",
+      "source": "text_encoder/model.safetensors.index.json",
+      "path": "text_encoder/model.safetensors.index.json",
+      "size": 19886,
+      "sha256": "a545bb25dc0f423d84be7b577311bba8bb7c6931f1eefcea65fc8b0a61a60a76",
+      "convert_to_bf16": false
+    },
+    {
+      "repo": "Lightricks/LTX-Video",
+      "revision": "8984fa25007f376c1a299016d0957a37a2f797bb",
+      "source": "tokenizer/added_tokens.json",
+      "path": "tokenizer/added_tokens.json",
+      "size": 2593,
+      "sha256": "ea5a91a3234f66ea642c8e672d67f0f493759a9bee6910ae304ea9b9492118b5",
+      "convert_to_bf16": false
+    },
+    {
+      "repo": "Lightricks/LTX-Video",
+      "revision": "8984fa25007f376c1a299016d0957a37a2f797bb",
+      "source": "tokenizer/special_tokens_map.json",
+      "path": "tokenizer/special_tokens_map.json",
+      "size": 2543,
+      "sha256": "7a1985a994c41886db38c719d2a3d2f40606663cc19d7c5d6a85d349320e06d2",
+      "convert_to_bf16": false
+    },
+    {
+      "repo": "Lightricks/LTX-Video",
+      "revision": "8984fa25007f376c1a299016d0957a37a2f797bb",
+      "source": "tokenizer/spiece.model",
+      "path": "tokenizer/spiece.model",
+      "size": 791656,
+      "sha256": "d60acb128cf7b7f2536e8f38a5b18a05535c9e14c7a355904270e15b0945ea86",
+      "convert_to_bf16": false
+    },
+    {
+      "repo": "Lightricks/LTX-Video",
+      "revision": "8984fa25007f376c1a299016d0957a37a2f797bb",
+      "source": "tokenizer/tokenizer_config.json",
+      "path": "tokenizer/tokenizer_config.json",
+      "size": 20618,
+      "sha256": "e8c727fbdfbc495f9ec68fc4b89eda5d7d0a800cc33d1a661ae208b20b50e17a",
+      "convert_to_bf16": false
+    },
+    {
+      "repo": "Lightricks/LTX-Video-0.9.5",
+      "revision": "e58e28c39631af4d1468ee57a853764e11c1d37e",
+      "source": "scheduler/scheduler_config.json",
+      "path": "config-0.9.5/scheduler/scheduler_config.json",
+      "size": 455,
+      "sha256": "195c1b88aa62b95e9c96827ac04e0857334d1bb027abdf06d2ad7684d1c90cf3",
+      "convert_to_bf16": false
+    },
+    {
+      "repo": "Lightricks/LTX-Video-0.9.5",
+      "revision": "e58e28c39631af4d1468ee57a853764e11c1d37e",
+      "source": "transformer/config.json",
+      "path": "config-0.9.5/transformer/config.json",
+      "size": 500,
+      "sha256": "ce265f6df6494b12121082ce148b2c580f8840921614768fdc1fc921a29685a2",
+      "convert_to_bf16": false
+    },
+    {
+      "repo": "Lightricks/LTX-Video-0.9.5",
+      "revision": "e58e28c39631af4d1468ee57a853764e11c1d37e",
+      "source": "vae/config.json",
+      "path": "config-0.9.5/vae/config.json",
+      "size": 1251,
+      "sha256": "fdf9d40b5a5d0ca3b1379a6d3f1753fb8627dee4927bb98e5ebadd14e4a3e4cb",
+      "convert_to_bf16": false
+    }
+  ]
+}

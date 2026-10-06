@@ -1,9 +1,29 @@
 {
-  "purpose": "PyTorch 2.8.0 CUDA 12.6 build for older NVIDIA GPUs (Maxwell to Volta). Installed beside the CPU runtime in runtime/cuda-site.",
+  "purpose": "PyTorch 2.8.0 CUDA 12.6 build for older NVIDIA GPUs (Maxwell to Volta). Installed beside the CPU runtime in runtime/cuda-site. Includes diffusers 0.35.2 (first release with SkyReels-V2 pipelines) for the long-video tier.",
   "python": "cp312-win_amd64",
   "index_url": "https://download.pytorch.org/whl/cu126",
   "extra_index_url": "https://pypi.org/simple",
   "packages": [
+    {
+      "name": "certifi",
+      "version": "2026.7.22",
+      "sha256": "62f22742b58a1a33014a2b6b706588a8d7e2a88ae7bd1a6ebe8c992928483775"
+    },
+    {
+      "name": "charset-normalizer",
+      "version": "3.5.2",
+      "sha256": "780fbe7cab297b81dad9fb8dc5eb003c0468ffb0d9e5f65068c53a34661a96bc"
+    },
+    {
+      "name": "colorama",
+      "version": "0.4.6",
+      "sha256": "4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6"
+    },
+    {
+      "name": "diffusers",
+      "version": "0.35.2",
+      "sha256": "d50d5e74fdd6dcf55e5c1d304bc52cc7c2659abd1752740d736d7b54078b4db5"
+    },
     {
       "name": "filelock",
       "version": "4.0.9",
@@ -13,6 +33,26 @@
       "name": "fsspec",
       "version": "2026.9.0",
       "sha256": "8dd6e646e99ea382bd85f97a45e6b526a442d79423a7dc673f1e2756d05fcb5f"
+    },
+    {
+      "name": "ftfy",
+      "version": "6.3.1",
+      "sha256": "7c70eb532015cd2f9adb53f101fb6c7945988d023a085d127d1573dc49dd0083"
+    },
+    {
+      "name": "huggingface_hub",
+      "version": "0.36.2",
+      "sha256": "48f0c8eac16145dfce371e9d2d7772854a4f591bcb56c9cf548accf531d54270"
+    },
+    {
+      "name": "idna",
+      "version": "3.20",
+      "sha256": "ab7ae7122974553370f0bdb919e1a960b2cd1bc1ef0276416d896db81c14582c"
+    },
+    {
+      "name": "importlib_metadata",
+      "version": "9.0.1",
+      "sha256": "bba5600596a7e21f3eef53281cf28d6a5195634d2f2b78ff9501a3272c6eaab0"
     },
     {
       "name": "Jinja2",
@@ -35,6 +75,41 @@
       "sha256": "e3fd2c13a7814cee3746340d8d7f8598a67f16a58bf47fb7f8793fab6efca1b0"
     },
     {
+      "name": "numpy",
+      "version": "2.5.3",
+      "sha256": "0a59a421a32580a009e8a1751345bf829631b990dc1794b80514ab722b435def"
+    },
+    {
+      "name": "packaging",
+      "version": "26.3",
+      "sha256": "d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c"
+    },
+    {
+      "name": "pillow",
+      "version": "12.3.0",
+      "sha256": "a2b55dd6b2a4c4b7d87ffa56bdb33fdc5fdb9a462173861a7bc097f17d91cb09"
+    },
+    {
+      "name": "PyYAML",
+      "version": "6.0.3",
+      "sha256": "5fcd34e47f6e0b794d17de1b4ff496c00986e1c83f7ab2fb8fcfe9616ff7477b"
+    },
+    {
+      "name": "regex",
+      "version": "2026.9.29",
+      "sha256": "fdd88ed5e20b1bcdd234421e454962c971aa44b653bdb7f1ea9ef683e90fb649"
+    },
+    {
+      "name": "requests",
+      "version": "2.34.2",
+      "sha256": "2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0"
+    },
+    {
+      "name": "safetensors",
+      "version": "0.8.0",
+      "sha256": "096ec1a98435df7beb08853bb5aa9081a84f23d0adc67ed1a0a10550f608373f"
+    },
+    {
       "name": "setuptools",
       "version": "84.0.0",
       "sha256": "51a52592b3b99e102b609654876bd65f19f999935166d1352678931132b0c670"
@@ -45,14 +120,44 @@
       "sha256": "e091cc3e99d2141a0ba2847328f5479b05d94a6635cb96148ccb3f34671bd8f5"
     },
     {
+      "name": "tokenizers",
+      "version": "0.20.3",
+      "sha256": "44def74cee574d609a36e17c8914311d1b5dbcfe37c55fd29369d42591b91cf2"
+    },
+    {
       "name": "torch",
       "version": "2.8.0+cu126",
       "sha256": "f6c79eac0018f9d131479ee1b7a68edb030619a316bfbc69275043aa4f338e4c"
     },
     {
+      "name": "tqdm",
+      "version": "4.70.1",
+      "sha256": "c293e525e6fef9c20e8728fd4612df02a0aa31bb5fe91ecd93e123b1b7bffa73"
+    },
+    {
+      "name": "transformers",
+      "version": "4.46.3",
+      "sha256": "a12ef6f52841fd190a3e5602145b542d03507222f2c64ebb7ee92e8788093aef"
+    },
+    {
       "name": "typing_extensions",
       "version": "4.16.0",
       "sha256": "481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8"
+    },
+    {
+      "name": "urllib3",
+      "version": "2.8.0",
+      "sha256": "0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3"
+    },
+    {
+      "name": "wcwidth",
+      "version": "0.9.1",
+      "sha256": "991d1c8834f548e9c1f16432075ee84638e122312556bbf1ed595ea8fffc4673"
+    },
+    {
+      "name": "zipp",
+      "version": "4.1.0",
+      "sha256": "25ad4e16390cd314347dd8f1de67a2ac538ae658ed4ab9db16029c07c188e97f"
     }
   ]
 }

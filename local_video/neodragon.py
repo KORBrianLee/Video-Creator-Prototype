@@ -57,12 +57,29 @@ def pipeline_revision(app):
 
 
 def environment(root, threads):
-    return {**os.environ, "TEMP": str(root / "tmp"), "TMP": str(root / "tmp"),
+    from .storage import cache_environment
+    return {**os.environ, **cache_environment(root),
             "PYTHONDONTWRITEBYTECODE": "1", "PYTHONIOENCODING": "utf-8",
             "HF_HOME": str(root / "cache" / "huggingface"), "HF_HUB_OFFLINE": "1",
             "TRANSFORMERS_OFFLINE": "1", "TORCH_HOME": str(root / "cache" / "torch"),
+            # Every math library gets the same cap before import; each thread otherwise keeps its own buffers.
             "OMP_NUM_THREADS": str(threads), "MKL_NUM_THREADS": str(threads),
-            "TOKENIZERS_PARALLELISM": "false"}
+            "OPENBLAS_NUM_THREADS": str(threads), "NUMEXPR_NUM_THREADS": str(threads),
+            "VECLIB_MAXIMUM_THREADS": str(threads), "TOKENIZERS_PARALLELISM": "false"}
+
+
+def failure_tail(log_path, limit=240):
+    """Last error line of a stage log; the scratch folder holding the log is removed after the job."""
+    try:
+        with open(log_path, "rb") as stream:
+            stream.seek(0, 2)
+            stream.seek(max(0, stream.tell() - 8192))
+            lines = stream.read().decode("utf-8", "replace").replace("\r", "\n").splitlines()
+    except OSError:
+        return "기록 없음"
+    lines = [line.strip() for line in lines if line.strip() and not set(line.strip()) <= {"^", "~"}]
+    errors = [line for line in lines if "Error" in line or "error" in line or "Exception" in line]
+    return (errors or lines or ["기록 없음"])[-1][:limit]
 
 
 def first_frame_key(scene, settings, identity, model_sha256):
@@ -183,27 +200,30 @@ def run_stage(root, work, name, request, progress, is_cancelled):
             media._write_json(work / (name + ".metrics.json"), record)
             return record
     _, free = media._memory(os.getpid())
-    from .resources import (CpuLimitMonitor, PressureGuard, record_drop, run_unthrottled, stage_limits,
-                            start_requirement_gib, wait_for_cooling)
+    from .resources import (CpuLimitMonitor, ElasticGuard, LowMemoryMode, commit_bytes, commit_floor, is_auto,
+                            learned_need_bytes, record_drop, run_unthrottled, stage_limits, wait_for_commit,
+                            wait_for_cooling)
     limits = stage_limits(request, "neodragon")
-    minimum = start_requirement_gib(root, name, limits)
+    frames = clip_frames(request)
     start_free = free
-    if free < minimum * 2**30:
-        raise MemoryError(f"단계 {name}: 여유 RAM {free/2**30:.2f}GiB, 시작 기준 {minimum}GiB 미달입니다.")
     conversion = name == "video_pack"
-    cap = max(6.5, limits["maximum_working_set_gib"]) if conversion else limits["maximum_working_set_gib"]
+    # Elastic memory: start with whatever RAM is free. Only commit (RAM + page file that Windows can still
+    # promise) must cover the stage's learned private need; tight RAM means paging, not refusal.
+    need = int(7.5 * 2**30) if conversion else learned_need_bytes(root, name, frames)
+    wait_for_commit(need, is_cancelled, progress)
+    manual_cap = request.get("maximum_working_set_gib")
+    cap = None if is_auto(manual_cap) else float(manual_cap)
     reserve = limits["reserve_ram_gib"]
-    guard = PressureGuard(reserve * 2**30)
+    guard = ElasticGuard(reserve * 2**30, commit_floor(commit_bytes()[0]))
     if conversion:
         packed = root / "models" / "experimental-neodragon" / "derived" / "transformer-cpu-int8-v2.pt"
         if shutil.disk_usage(root).free < 3 * 2**30:
             raise RuntimeError("D 공간이 부족해 최초 INT8 변환을 시작할 수 없습니다.")
-        if free < 7.5 * 2**30:
-            raise RuntimeError("최초 INT8 변환 또는 재준비는 여유 RAM 7.5GiB가 필요합니다. 준비된 D 실행 폴더를 복사하면 다시 변환하지 않습니다.")
     python = media._path_in_runtime(root / "runtime" / "neodragon-python" / "python.exe", root)
-    stage_file = app / "local_video" / "neodragon_stage.py"
+    stage_file = app / "local_video" / {"skyreels_generate": "skyreels_stage.py", "ltx_generate": "ltx_stage.py"}.get(name, "neodragon_stage.py")
     flags = (subprocess.CREATE_NO_WINDOW | subprocess.BELOW_NORMAL_PRIORITY_CLASS) if os.name == "nt" else 0
     record = {"name": name, "state": "running", "peak_working_set_bytes": 0, "peak_private_resident_bytes": 0,
+              "peak_commit_bytes": 0,
               "minimum_system_free_bytes": free, "working_set_limit_gib": cap,
               "reserve_ram_gib": reserve, "one_time_conversion": conversion}
     monitor = CpuLimitMonitor()
@@ -219,21 +239,24 @@ def run_stage(root, work, name, request, progress, is_cancelled):
             record["process_id"] = process.pid
             run_unthrottled(getattr(process, "_handle", None))
             progress({"stage": name, "phase_process_id": process.pid})
+            low_memory = LowMemoryMode(process.pid)
             while process.poll() is None:
                 media._cancel(is_cancelled)
                 working, free = media._memory(process.pid)
                 reclaimable = media._reclaimable(process.pid, working)
                 record["peak_working_set_bytes"] = max(record["peak_working_set_bytes"], working)
                 record["peak_private_resident_bytes"] = max(record["peak_private_resident_bytes"], working - reclaimable)
+                record["peak_commit_bytes"] = max(record["peak_commit_bytes"], media._commit(process.pid))
                 record["minimum_system_free_bytes"] = min(record["minimum_system_free_bytes"], free + reclaimable)
-                if working - reclaimable > cap * 2**30:
-                    raise MemoryError(f"단계 {name}의 작업 메모리가 상한 {cap}GiB를 넘었습니다. 이 작업만 중지했습니다.")
-                guard.check(free + reclaimable, time.monotonic())
-                if time.monotonic() - started > request.get("maximum_scene_seconds", 1800):
+                if cap is not None and working - reclaimable > cap * 2**30:
+                    raise MemoryError(f"단계 {name}의 작업 메모리가 사용자 지정 상한 {cap}GiB를 넘었습니다. 이 작업만 중지했습니다.")
+                now = time.monotonic()
+                tight = low_memory.update(guard.check(free + reclaimable, commit_bytes()[1], now), now)
+                if now - started > stage_time_limit(request):
                     raise RuntimeError(f"단계 {name}가 실행 제한 시간을 넘었습니다.")
-                if time.monotonic() - heartbeat >= 15:
-                    cpu = monitor.sample(time.monotonic()) or cpu
-                    progress({"stage": name, "working_set_gib": round(working/2**30, 3),
+                if now - heartbeat >= 15:
+                    cpu = monitor.sample(now) or cpu
+                    progress({"stage": name, "working_set_gib": round(working/2**30, 3), "low_memory_mode": tight,
                               "cpu_limit_pct": (cpu or {}).get("limit_pct"),
                               "peak_working_set_gib": round(record["peak_working_set_bytes"]/2**30, 3),
                               "free_ram_gib": round(free/2**30, 3), "reclaimable_mapped_gib": round(reclaimable/2**30, 3),
@@ -241,8 +264,17 @@ def run_stage(root, work, name, request, progress, is_cancelled):
                     heartbeat = time.monotonic()
                 time.sleep(0.25)
             if process.returncode:
-                raise RuntimeError(f"단계 {name} 실패. 자세한 기록: {work / (name + '.log')}")
+                raise RuntimeError(f"단계 {name} 실패: {failure_tail(work / (name + '.log'))}. 자세한 기록: {work / (name + '.log')}")
+            record.update(low_memory_checks=guard.tight_events, working_set_trims=low_memory.trims)
         record["state"] = "completed"
+        if name in LONG_VIDEO_STAGES.values():
+            device_record = json.loads((work / "torch-device.json").read_text(encoding="utf-8"))
+            if device_record.get("device") not in {"cuda", "xpu"}:
+                raise RuntimeError(f"{name} 단계가 GPU에서 실행된 기록이 없습니다.")
+            record.update(gpu_inference=True, gpu={"backend": f"torch_{device_record['device']}", "model": device_record.get("model"),
+                                                   "weights": device_record.get("weights"),
+                                                   "peak_gpu_allocated_bytes": device_record.get("peak_gpu_allocated_bytes"),
+                                                   "settings": device_record.get("settings")})
         if name == "video_infer" and request.get("device_plan", {}).get("gpu_inference"):
             ran_on, device_record = None, {}
             if (work / "torch-device.json").is_file():
@@ -266,7 +298,7 @@ def run_stage(root, work, name, request, progress, is_cancelled):
     finally:
         if process is not None:
             media._stop_owned(process)
-            record_drop(root, name, start_free, record["minimum_system_free_bytes"], record["peak_private_resident_bytes"])
+            record_drop(root, name, start_free, record["minimum_system_free_bytes"], record["peak_private_resident_bytes"], frames)
         record.update(monitor.summary())
         monitor.close()
         record["elapsed_seconds"] = round(time.monotonic()-started, 3)
@@ -339,11 +371,79 @@ def settings_for(request):
     settings = dict(PRESETS[request["preset"]])
     if request.get("continuous"):
         duration = request.get("duration_seconds", 4)
-        if len(request["scenes"]) != 1 or request["preset"] == "smoke" or type(duration) is not int or duration not in {2, 4, 8}:
-            raise ValueError("연속 영상은 한 장면과 2/4/8초 설정을 사용해야 합니다.")
-        # Neo's causal VAE requires 8*n+1 frames; all are model-generated.
+        if len(request["scenes"]) != 1 or request["preset"] == "smoke" or type(duration) is not int or duration not in media.DURATIONS:
+            raise ValueError(f"연속 영상은 한 장면과 {'/'.join(map(str, media.DURATIONS))}초 설정을 사용해야 합니다.")
+        # Neo's causal VAE requires 8*n+1 frames; all are model-generated (15s = 361 frames, 46 latent frames).
         settings["frames"] = duration * settings["fps"] + 1
     return settings
+
+
+NEO_FRAME_STAGES = ("video_text", "video_encode", "video_pack", "video_infer", "video_decode")
+LONG_VIDEO_STAGES = {"skyreels": "skyreels_generate", "ltx": "ltx_generate"}
+# Measured on Iris XPU: a 15s Neo clip keeps the scene for about 5s, darkens by 7.5s and ends in blue noise.
+NEO_VERIFIED_SECONDS = 8
+
+
+def generate_frames(root, work, request, settings, progress, is_cancelled, runner=None, cached_runner=None):
+    """Make the video frames with the chosen tier; a failing long-video model falls back to Neo in the same folder.
+
+    On fallback the first frame is centre-cropped to Neo's aspect ratio and `settings` is updated in place,
+    so encoding and verification use the Neo settings that actually produced the frames. Clips longer than
+    Neo's verified length are not handed to Neo (it degrades after about 7s); they fail with the reason.
+    """
+    from . import accelerator
+    from .conditioning import run_cached
+    runner = runner or run_stage
+    cached_runner = cached_runner or run_cached
+    plan = request.get("device_plan", {})
+    phases = []
+    tier = plan.get("model_tier")
+    if tier in LONG_VIDEO_STAGES:
+        stage = LONG_VIDEO_STAGES[tier]
+        try:
+            return [runner(root, work, stage, request, progress, is_cancelled)]
+        except (MemoryError, InterruptedError, TimeoutError):
+            raise
+        except Exception as exc:
+            accelerator.mark_failed(root, tier, f"{stage}: {exc}")
+            duration = request.get("duration_seconds", 2) if request.get("continuous") else 2
+            if request.get("video_model", "auto") != "auto":
+                raise RuntimeError(f"{tier} 모델이 실패했습니다({str(exc)[:220]}). video_model을 지정한 요청은 Neo로 대신 만들지 않습니다.") from exc
+            if duration > NEO_VERIFIED_SECONDS:
+                raise RuntimeError(f"{tier} 장시간 모델이 실패했습니다({str(exc)[:200]}). {duration}초는 Neo로 대신 만들지 않습니다"
+                                   f"(Neo는 {NEO_VERIFIED_SECONDS}초 이후 화면이 무너짐). 1시간 뒤 다시 시도하거나 길이를 줄이세요.") from exc
+            plan["model_tier"], plan["model_tier_fallback_reason"] = "neo", str(exc)[:200]
+            progress({"stage": "long_video_model_failed_using_neo"})
+            neo = settings_for({**request, "preset": request.get("preset", "preview")})
+            settings.clear()
+            settings.update(neo)
+            from PIL import Image, ImageOps
+            frame = work / "first-frame.png"
+            with Image.open(frame) as image:
+                ImageOps.fit(image.convert("RGB"), (neo["width"], neo["height"])).save(frame)
+            stage_request = json.loads((work / "request.json").read_text(encoding="utf-8"))
+            stage_request.update(neo)
+            stage_request["device_plan"] = plan
+            stage_request.pop("skyreels", None)
+            stage_request.pop("ltx", None)
+            media._write_json(work / "request.json", stage_request)
+    for name in NEO_FRAME_STAGES:
+        phases.append(cached_runner(root, work, name, request, progress, is_cancelled, run_stage_adaptive))
+    return phases
+
+
+def clip_frames(request):
+    """Frames of the requested clip (None for requests that are not video jobs, e.g. one-time conversion)."""
+    if request.get("continuous"):
+        return int(request.get("duration_seconds", 2)) * 24 + 1
+    return 49 if "scenes" in request else None
+
+
+def stage_time_limit(request):
+    """Seconds one stage may run: 30 minutes, growing with the clip length so 15s clips are not cut off."""
+    if "maximum_scene_seconds" in request:
+        return request["maximum_scene_seconds"]
+    return max(1800, 20 * (clip_frames(request) or 49))
 
 
 def generate_project(request, output_dir, cache_dir, model_dir, progress, is_cancelled):
@@ -361,11 +461,37 @@ def generate_project(request, output_dir, cache_dir, model_dir, progress, is_can
     choice = accelerator.choose(root, selected.get("selected_device"), request.get("backend", "auto")) if selected.get("gpu_inference") else {}
     selected["torch_device"] = choice.get("torch_device", "cpu")
     selected["torch_discrete"] = bool(choice.get("discrete"))
+    selected["model_tier"] = choice.get("model_tier", "neo")
+    wanted = request.get("video_model", "auto")
+    if wanted == "neo":
+        selected["model_tier"] = "neo"
+    elif wanted != "auto" and wanted != selected["model_tier"]:
+        # The one-hour failure block protects automatic choice; an explicit model request is an experiment.
+        if choice.get("torch_backend") and str(choice.get("model_tier_reason", "")).startswith(f"{wanted}_failed_recently"):
+            selected["model_tier"] = wanted
+        else:
+            raise RuntimeError(f"video_model={wanted}을 이 컴퓨터에서 쓸 수 없습니다. 선택 가능: {selected['model_tier']}, neo")
     request["device_plan"] = selected
     output_dir, cache_dir, model_dir = [media._path_in_runtime(Path(p), root) for p in (output_dir, cache_dir, model_dir)]
     for path in (output_dir, cache_dir):
         path.mkdir(parents=True, exist_ok=True)
     settings = settings_for(request)
+    long_video = None
+    duration = request.get("duration_seconds", 2) if request.get("continuous") else 2
+    if selected["model_tier"] == "neo" and duration > NEO_VERIFIED_SECONDS and not request.get("diagnostic"):
+        raise ValueError(f"이 컴퓨터는 Neo 모델을 사용합니다. Neo는 약 7초 이후 화면이 무너져(15초 실측) {NEO_VERIFIED_SECONDS}초까지만 정식 생성합니다. "
+                         f"{duration}초는 NVIDIA GPU(VRAM 8GB 이상)의 장시간 모델에서 생성하거나 diagnostic=true 시험으로만 요청하세요. "
+                         f"사유: {choice.get('model_tier_reason') or choice.get('reason') or 'NVIDIA GPU 없음'}")
+    if selected["model_tier"] == "skyreels":
+        from . import skyreels
+        long_video = skyreels.settings_for(choice.get("total_memory_bytes"), duration, request.get("preset", "preview"))
+    elif selected["model_tier"] == "ltx":
+        from . import ltx
+        long_video = ltx.settings_for(duration, request.get("preset", "preview"))
+        if request.get("anchor_end"):
+            long_video["anchor_end"] = float(request["anchor_end"])
+    if long_video:
+        settings = {**settings, **{key: long_video[key] for key in ("width", "height", "frames", "fps")}}
     shots = []
     for index, scene in enumerate(request["scenes"]):
         media._cancel(is_cancelled)
@@ -373,7 +499,7 @@ def generate_project(request, output_dir, cache_dir, model_dir, progress, is_can
                      "models": request["model_revision"], "prompt": scene["prompt"],
                      "seed": scene["seed"], "settings": settings,
                      "cpu_precision": request.get("cpu_precision", "int8"),
-                     "device_plan": selected,
+                     "device_plan": selected, "long_video_settings": long_video,
                      "prompt_modifier": scene.get("prompt_modifier", ", cinematic, realistic textures, high detail, natural colours"),
                      "first_image_sha256": scene.get("image_sha256"),
                      "first_frame_prompt": scene.get("first_frame_prompt", scene["prompt"]) if not scene.get("image_path") else None,
@@ -394,17 +520,19 @@ def generate_project(request, output_dir, cache_dir, model_dir, progress, is_can
                                                      "threads": request["threads"], "device_plan": selected,
                                                      "gpu_buffer_mib": request.get("gpu_buffer_mib", "auto"),
                                                      "reserve_ram_gib": request.get("reserve_ram_gib", "auto"),
-                                                     "cpu_precision": request.get("cpu_precision", "int8"), **settings})
+                                                     "cpu_precision": request.get("cpu_precision", "int8"), **settings,
+                                                     **({selected["model_tier"]: long_video, "negative_prompt": scene.get("negative_prompt", "")} if long_video else {})})
             if "prompt_modifier" in scene:
                 stage_request = json.loads((work / "request.json").read_text(encoding="utf-8"))
                 stage_request["prompt_modifier"] = scene["prompt_modifier"]
                 media._write_json(work / "request.json", stage_request)
             progress({"stage": "first_frame"})
             phases = [first_frame(root, work, scene, settings, request, progress, is_cancelled)]
-            for number, name in enumerate(STAGES):
-                progress({"step": number+2, "steps": len(STAGES)+1})
-                from .conditioning import run_cached
-                phases.append(run_cached(root, work, name, request, progress, is_cancelled, run_stage_adaptive))
+            progress({"step": 2, "steps": len(STAGES)+1})
+            phases += generate_frames(root, work, request, settings, progress, is_cancelled)
+            progress({"step": len(STAGES), "steps": len(STAGES)+1})
+            from .conditioning import run_cached
+            phases.append(run_cached(root, work, "safety", request, progress, is_cancelled, run_stage_adaptive))
             safety = json.loads((work / "safety.json").read_text(encoding="utf-8"))
             if safety.get("unsafe") is not False:
                 raise RuntimeError("필수 안전 검사에서 결과를 거부했습니다.")

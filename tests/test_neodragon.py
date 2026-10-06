@@ -39,19 +39,40 @@ class NeoTests(unittest.TestCase):
                 return self.returncode
         return Child()
 
-    def test_insufficient_ram_never_starts_a_child(self):
-        with patch.object(neo.media, "_memory", return_value=(0, 2*2**30)), \
+    def finished_child(self):
+        process = self.child()
+        process.returncode = 0
+        return process
+
+    def test_little_free_ram_still_starts_in_low_memory_mode(self):
+        with patch.object(neo.media, "_memory", return_value=(0, int(0.8*2**30))), \
+                patch("local_video.resources.commit_bytes", return_value=(34*2**30, 14*2**30)), \
+                patch.object(neo.subprocess, "Popen", return_value=self.finished_child()) as launch:
+            record = neo.run_stage(self.root, self.work, "video_infer", self.request, lambda update: None, lambda: False)
+        launch.assert_called_once()
+        self.assertEqual(record["state"], "completed")
+
+    def test_exhausted_commit_never_starts_a_child(self):
+        with patch.object(neo.media, "_memory", return_value=(0, 6*2**30)), \
+                patch("local_video.resources.commit_bytes", return_value=(34*2**30, int(0.5*2**30))), \
+                patch("local_video.resources.wait_for_commit", side_effect=MemoryError("commit 여유 없음")), \
                 patch.object(neo.subprocess, "Popen") as launch:
-            with self.assertRaisesRegex(MemoryError, "시작 기준"):
+            with self.assertRaisesRegex(MemoryError, "commit"):
                 neo.run_stage(self.root, self.work, "video_infer", self.request, lambda update: None, lambda: False)
         launch.assert_not_called()
 
-    def test_conversion_requires_extra_ram_only_when_not_prepared(self):
+    def test_conversion_needs_commit_only_when_not_prepared(self):
+        needs = []
+        def wait(needed, cancelled, progress):
+            needs.append(needed)
+            raise MemoryError("commit 여유 없음")
         with patch.object(neo.media, "_memory", return_value=(0, 4*2**30)), \
+                patch("local_video.resources.wait_for_commit", side_effect=wait), \
                 patch.object(neo.subprocess, "Popen") as launch:
-            with self.assertRaisesRegex(RuntimeError, "최초 INT8 변환"):
+            with self.assertRaises(MemoryError):
                 neo.run_stage(self.root, self.work, "video_pack", self.request, lambda update: None, lambda: False)
         launch.assert_not_called()
+        self.assertEqual(needs, [int(7.5 * 2**30)])
 
     def test_cancel_terminates_only_the_owned_phase_and_records_failure(self):
         process = self.child()
@@ -72,7 +93,7 @@ class NeoTests(unittest.TestCase):
         untouched.write_bytes(b"previous output")
         with patch.object(neo.media, "_memory", side_effect=[(0, 8*2**30), (6*2**30, 8*2**30)]), \
                 patch.object(neo.subprocess, "Popen", return_value=process):
-            with self.assertRaisesRegex(MemoryError, "작업 메모리가 상한"):
+            with self.assertRaisesRegex(MemoryError, "작업 메모리가 사용자 지정 상한"):
                 neo.run_stage(self.root, self.work, "video_infer", self.request, lambda update: None, lambda: False)
         self.assertTrue(process.terminated)
         self.assertEqual(untouched.read_bytes(), b"previous output")
@@ -141,6 +162,16 @@ class NeoTests(unittest.TestCase):
         model.write_bytes(b"broken")
         with self.assertRaisesRegex(RuntimeError, "SHA256"):
             verify(request, self.root, lambda update: None, lambda: False)
+
+
+class FailureTailTests(unittest.TestCase):
+    def test_keeps_the_last_error_line_without_caret_markers(self):
+        with tempfile.TemporaryDirectory(dir=os.environ.get("TEMP")) as folder:
+            log = Path(folder) / "ltx_generate.log"
+            log.write_text("step 1\r\nTraceback\n  File x\n    noise = torch.randn(...)\n    ^^^^^^\n"
+                           "RuntimeError: Expected a 'xpu' device type\n\n", encoding="utf-8")
+            self.assertEqual(neo.failure_tail(log), "RuntimeError: Expected a 'xpu' device type")
+            self.assertEqual(neo.failure_tail(Path(folder) / "missing.log"), "기록 없음")
 
 
 if __name__ == "__main__":

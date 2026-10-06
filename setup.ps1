@@ -1,5 +1,5 @@
 ﻿param(
-    [string]$RuntimeDir = 'C:\CursorVideoRuntime',
+    [string]$RuntimeDir = 'D:\VideoCreator\CursorVideoRuntime',
     [ValidateSet('wan', 'neodragon', 'lightning')][string]$Profile = 'neodragon',
     [ValidateSet('auto', 'gpu', 'intel-gpu', 'cpu')][string]$Backend = 'auto'
 )

@@ -196,7 +196,7 @@ class BackendTests(unittest.TestCase):
         before = time.monotonic()
         with mock.patch.object(backend, "_memory", return_value=(1024**3, 8*1024**3)), \
              mock.patch.object(backend, "_reclaimable", return_value=0):
-            with self.assertRaisesRegex(MemoryError, "작업 보호"):
+            with self.assertRaisesRegex(MemoryError, "사용자 지정 상한"):
                 backend._infer([sys.executable, "-c", "import time; time.sleep(60)"], self.work, request, lambda update: None, lambda: False, 1, 1, 4)
         self.assertLess(time.monotonic()-before, 5)
 
@@ -215,11 +215,27 @@ class BackendTests(unittest.TestCase):
         from local_video.resources import learned_drops
         self.assertAlmostEqual(learned_drops(self.work)["inference"], 1.1, delta=0.05)
 
-    def test_system_reserve_terminates_owned_inference_child(self):
-        request = {"_runtime_dir": str(self.work), "maximum_working_set_gib": 5, "reserve_ram_gib": 1}
-        readings = iter([(20*1024**2, 8*1024**3)])
-        with mock.patch.object(backend, "_memory", side_effect=lambda pid: next(readings, (20*1024**2, 100*1024**2))):
-            with self.assertRaisesRegex(MemoryError, "시스템 여유"):
+    def test_tight_ram_keeps_running_and_trims_the_engine(self):
+        request = {"_runtime_dir": str(self.work), "maximum_working_set_gib": "auto", "reserve_ram_gib": 1}
+        checks, updates, trims = 0, [], []
+        def cancel():
+            nonlocal checks
+            checks += 1
+            return checks >= 20
+        with mock.patch.object(backend, "_memory", return_value=(20*1024**2, 100*1024**2)), \
+             mock.patch("local_video.resources.commit_bytes", return_value=(34*1024**3, 14*1024**3)), \
+             mock.patch("local_video.resources.trim_working_set", side_effect=lambda pid: trims.append(pid) or True):
+            with self.assertRaises(InterruptedError):
+                backend._infer([sys.executable, "-c", "import time; time.sleep(60)"], self.work, request, updates.append, cancel, 1, 1, 4)
+        self.assertTrue(trims, "tight RAM must trim the engine instead of stopping it")
+        self.assertTrue(any(update.get("memory_pressure") for update in updates))
+
+    def test_exhausted_commit_terminates_owned_inference_child(self):
+        request = {"_runtime_dir": str(self.work), "maximum_working_set_gib": "auto", "reserve_ram_gib": 1}
+        readings = iter([(34*1024**3, 14*1024**3), (34*1024**3, 14*1024**3)])
+        with mock.patch.object(backend, "_memory", return_value=(20*1024**2, 8*1024**3)), \
+             mock.patch("local_video.resources.commit_bytes", side_effect=lambda: next(readings, (34*1024**3, 100*1024**2))):
+            with self.assertRaisesRegex(MemoryError, "commit 여유"):
                 backend._infer([sys.executable, "-c", "import time; time.sleep(60)"], self.work, request, lambda update: None, lambda: False, 1, 1, 4)
 
     def test_safe_argument_list_and_fixed_lightning_schedule(self):

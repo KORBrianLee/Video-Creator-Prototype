@@ -1,6 +1,9 @@
 """Explicit SSD selection with the same containment rules on C and D."""
 from pathlib import Path, PureWindowsPath
 
+PREFERRED_RUNTIME = r"D:\VideoCreator\CursorVideoRuntime"
+FALLBACK_RUNTIME = r"C:\CursorVideoRuntime"
+
 
 def runtime_root(value):
     if not isinstance(value, (str, Path)):
@@ -19,4 +22,18 @@ def runtime_root(value):
 
 
 def default_runtime():
-    return r"C:\CursorVideoRuntime"
+    """D holds models, caches and compute scratch; C is only used when the PC has no D volume."""
+    return PREFERRED_RUNTIME if Path(PureWindowsPath(PREFERRED_RUNTIME).anchor).is_dir() else FALLBACK_RUNTIME
+
+
+def cache_environment(root):
+    """Every cache a library or GPU driver would otherwise write under the user profile on C."""
+    root = Path(root)
+    cache = root / "cache"
+    temporary = str(root / "tmp")
+    return {"TEMP": temporary, "TMP": temporary,
+            "HF_HOME": str(cache / "huggingface"), "TORCH_HOME": str(cache / "torch"),
+            "XDG_CACHE_HOME": str(cache / "xdg"), "PIP_CACHE_DIR": str(cache / "pip"),
+            "TORCHINDUCTOR_CACHE_DIR": str(cache / "torchinductor"), "TRITON_CACHE_DIR": str(cache / "triton"),
+            # SYCL_CACHE_DIR / NEO_CACHE_DIR are left alone: redirecting the Intel kernel cache hung Iris Xe kernels.
+            "CUDA_CACHE_PATH": str(cache / "cuda"), "MPLCONFIGDIR": str(cache / "matplotlib")}

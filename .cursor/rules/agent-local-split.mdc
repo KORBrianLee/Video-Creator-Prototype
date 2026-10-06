@@ -1,0 +1,15 @@
+---
+description: Split work between the Cursor agent and the local program to save tokens
+alwaysApply: true
+---
+# Agent judges, local program runs
+
+- Top rule: anything that needs storage or compute runs on D (`D:\VideoCreator\CursorVideoRuntime`). C is a portable OS volume: no models, caches, temp files, outputs, plans or reports there. The D root is not writable; use folders under `D:\VideoCreator`.
+
+- The agent chooses the goal, edits code, writes a plan, and reads one summary. The local program generates, waits, measures, checks quality signals, limits attempts and writes the summary.
+- More than one generation run: write a plan JSON and start `video.cmd plan <file>` in a background shell (`block_until_ms: 0`), then end the turn. Do not poll. The completion notification brings back one summary of 4 KiB or less.
+- One finished job: use `video.cmd digest <job>` (MCP `video_digest`), never the full status, logs or frame folders. Open `review_image` only when the digest has warnings or a content review is the task.
+- Never write shell polling loops around jobs. Never `AwaitShell` a generation for long; generations take minutes to tens of minutes.
+- Read stage logs only when a digest reports a failure, and only the tail (`tail -c 2000`).
+- Do not re-run unchanged experiments. The runner stops after the same failure twice, on video collapse, and at 6 attempts per plan.
+- Digest warnings (`darkening`, `colour_blowout`, `near_black_frames`, `static_suspected`) are automatic signals, not a quality pass. Report content quality separately.

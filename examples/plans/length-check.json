@@ -1,0 +1,13 @@
+{
+  "name": "length-check",
+  "max_attempts": 6,
+  "stop_on": ["collapse"],
+  "runs": [
+    {"id": "2s", "request": {"diagnostic": true, "continuous": true, "duration_seconds": 2, "seed": 11,
+      "scenes": [{"id": "site", "prompt": "an excavator digging gravel at a construction site, one worker in a high-visibility vest standing still beside it, daylight, static wide shot"}]}},
+    {"id": "8s", "request": {"diagnostic": true, "continuous": true, "duration_seconds": 8, "seed": 11,
+      "scenes": [{"id": "site", "prompt": "an excavator digging gravel at a construction site, one worker in a high-visibility vest standing still beside it, daylight, static wide shot"}]}},
+    {"id": "15s", "request": {"diagnostic": true, "continuous": true, "duration_seconds": 15, "seed": 11,
+      "scenes": [{"id": "site", "prompt": "an excavator digging gravel at a construction site, one worker in a high-visibility vest standing still beside it, daylight, static wide shot"}]}}
+  ]
+}

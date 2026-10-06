@@ -1,0 +1,131 @@
+{
+  "model": "SkyReels-V2 Diffusion Forcing 1.3B 540P (Diffusers format)",
+  "repo": "Skywork/SkyReels-V2-DF-1.3B-540P-Diffusers",
+  "revision": "958acd63685c7e632e4b194549f2a703e34bd98b",
+  "license": "Skywork Community License (commercial use allowed under its terms); see docs/licenses/SkyReels-V2-Skywork-LICENSE.txt",
+  "folder": "skyreels-v2-df-1.3b",
+  "note": "Text encoder and transformer shards are published in FP32; the installer verifies each shard, rewrites it as BF16 and deletes the FP32 file.",
+  "download_bytes": 28995007452,
+  "files": [
+    {
+      "path": "LICENSE",
+      "size": 3179,
+      "sha256": "62fd7840fe6fa183a9dfce39a427233e8b90b849f96b724e949a09c1c30ca643",
+      "convert_to_bf16": false
+    },
+    {
+      "path": "model_index.json",
+      "size": 429,
+      "sha256": "8afd4298a9e52b7d3a868f342e00b1ad2936e7e3916aec91b7ad8abc2b20c012",
+      "convert_to_bf16": false
+    },
+    {
+      "path": "scheduler/scheduler_config.json",
+      "size": 525,
+      "sha256": "46f9145c87564e30fb3c4a37d28cbe7b1577a281f848cdf56fc3616e81ccc80d",
+      "convert_to_bf16": false
+    },
+    {
+      "path": "text_encoder/config.json",
+      "size": 811,
+      "sha256": "25539d0730bcac164d609248433bd11b900f6c3ddbb5f3c8c3060ccf07c6d084",
+      "convert_to_bf16": false
+    },
+    {
+      "path": "text_encoder/model-00001-of-00005.safetensors",
+      "size": 4972389712,
+      "sha256": "c0ef3a140898e228a3520c9adec60743d2e8e5b3d229651bb37f1a3921919f99",
+      "convert_to_bf16": true
+    },
+    {
+      "path": "text_encoder/model-00002-of-00005.safetensors",
+      "size": 4899225672,
+      "sha256": "481c7b2b39771c44df6dd8d13ee12ed072d731b4a650bd092885d4d52db229ad",
+      "convert_to_bf16": true
+    },
+    {
+      "path": "text_encoder/model-00003-of-00005.safetensors",
+      "size": 4966309504,
+      "sha256": "f93148bcc04052a169e1e49bfcf6125df6cf9bf243cb9c627da75266cf8e35c3",
+      "convert_to_bf16": true
+    },
+    {
+      "path": "text_encoder/model-00004-of-00005.safetensors",
+      "size": 4999880704,
+      "sha256": "a451792c739c05bca4606190cc2dd16731411bac03b4cf6aacc5767321f857c9",
+      "convert_to_bf16": true
+    },
+    {
+      "path": "text_encoder/model-00005-of-00005.safetensors",
+      "size": 2885866152,
+      "sha256": "7e76e18d224531b8197a46231cb53daf7f2f6ca707130252becf933026ac4eea",
+      "convert_to_bf16": true
+    },
+    {
+      "path": "text_encoder/model.safetensors.index.json",
+      "size": 22476,
+      "sha256": "8af791f24a6447aa30c95786f40adf23d3c9df97470d2f36159c8f1113f120b4",
+      "convert_to_bf16": false
+    },
+    {
+      "path": "tokenizer/special_tokens_map.json",
+      "size": 7079,
+      "sha256": "456b58fd240a06c743a7c2cf8008bec501240d68ebd1fc4018ea569505fea270",
+      "convert_to_bf16": false
+    },
+    {
+      "path": "tokenizer/spiece.model",
+      "size": 4548313,
+      "sha256": "e3909a67b780650b35cf529ac782ad2b6b26e6d1f849d3fbb6a872905f452458",
+      "convert_to_bf16": false
+    },
+    {
+      "path": "tokenizer/tokenizer.json",
+      "size": 16837459,
+      "sha256": "20a46ac256746594ed7e1e3ef733b83fbc5a6f0922aa7480eda961743de080ef",
+      "convert_to_bf16": false
+    },
+    {
+      "path": "tokenizer/tokenizer_config.json",
+      "size": 61786,
+      "sha256": "89bef11d01c80a229079666dd470d536aba87b8eaa00b51cc481ba625be59269",
+      "convert_to_bf16": false
+    },
+    {
+      "path": "transformer/config.json",
+      "size": 559,
+      "sha256": "99bc18aa606c3349a79386e13f8a8b6af87dd82853c9a3f0ce7e93010685255a",
+      "convert_to_bf16": false
+    },
+    {
+      "path": "transformer/diffusion_pytorch_model-00001-of-00002.safetensors",
+      "size": 4998781576,
+      "sha256": "d935cb601d7ade892cc3c6669bb84299183fb41513980980bf6de10f474a69af",
+      "convert_to_bf16": true
+    },
+    {
+      "path": "transformer/diffusion_pytorch_model-00002-of-00002.safetensors",
+      "size": 743405160,
+      "sha256": "b068c1060ee48277148202b7086eebf88012de8ee397fe36db7ad608cfc4a2d5",
+      "convert_to_bf16": true
+    },
+    {
+      "path": "transformer/diffusion_pytorch_model.safetensors.index.json",
+      "size": 73740,
+      "sha256": "9dddbdab400d554c8325059cb7a4f36b50c0164607a3a3d10277700b3e7beb3a",
+      "convert_to_bf16": false
+    },
+    {
+      "path": "vae/config.json",
+      "size": 724,
+      "sha256": "7a3afcf422b9a9d63e0b6ca7e0d3b5193220a61f5b203bb8417900bc090705e8",
+      "convert_to_bf16": false
+    },
+    {
+      "path": "vae/diffusion_pytorch_model.safetensors",
+      "size": 507591892,
+      "sha256": "d6e524b3fffede1787a74e81b30976dce5400c4439ba64222168e607ed19e793",
+      "convert_to_bf16": false
+    }
+  ]
+}

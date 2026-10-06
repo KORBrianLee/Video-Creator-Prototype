@@ -39,7 +39,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--request", default=str(SOURCE / "examples" / "construction-request.json"))
     parser.add_argument("--seed", type=int)
-    parser.add_argument("--duration", type=int, choices=[2, 4, 8])
+    parser.add_argument("--duration", type=int, choices=[2, 4, 8, 10, 15])
     args = parser.parse_args()
     _, root = control.load_config()
     value = control.read_json(Path(args.request))

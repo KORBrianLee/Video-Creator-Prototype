@@ -26,19 +26,34 @@ DEFAULT_NEGATIVE = "static image, slideshow, blurry, deformed, inconsistent moti
 
 def write_json(path, value):
     path.parent.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(value, ensure_ascii=False, indent=2)
     temporary = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
-    temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
-    for attempt in range(20):
+    temporary.write_text(text, encoding="utf-8")
+    # Windows refuses the replace while a reader (status poll, antivirus scan) holds the file open.
+    for attempt in range(60):
         try:
             os.replace(temporary, path)
             return
         except PermissionError:
-            time.sleep(0.05)
+            time.sleep(min(0.05 * (attempt + 1), 0.25))
     temporary.unlink(missing_ok=True)
+    # Rename needs delete sharing, an in-place write does not; readers retry a torn read (read_json).
+    for attempt in range(20):
+        try:
+            path.write_text(text, encoding="utf-8")
+            return
+        except PermissionError:
+            time.sleep(0.25)
     raise OSError("작업 상태를 저장할 수 없습니다.")
 
 def read_json(path):
-    return json.loads(path.read_text(encoding="utf-8-sig"))
+    for attempt in range(10):
+        try:
+            return json.loads(path.read_text(encoding="utf-8-sig"))
+        except ValueError:
+            if attempt == 9:
+                raise
+            time.sleep(0.1)
 
 def load_config():
     from .storage import default_runtime, runtime_root
@@ -305,10 +320,16 @@ def doctor(verify=False, profile=None):
     from .resources import describe
     resource_plan = describe(cfg, profile, selected if profile == "wan" or selected.get("gpu_inference") else None, root)
     minimum = resource_plan["minimum_free_ram_gib"]
-    ram_short = mem["free_ram_gib"] < minimum
-    ram_only = ram_short and not errors
-    if ram_short:
-        errors.append(f'현재 여유 RAM {mem["free_ram_gib"]}GiB, 실행 보호 기준 {minimum}GiB 미달입니다.')
+    # Elastic memory: little free RAM only means slower, paging-friendly execution (low-memory mode).
+    # Only a near-empty commit (RAM + page file Windows can still promise) blocks a start.
+    from .resources import commit_bytes, commit_floor
+    commit_limit, commit_available = commit_bytes()
+    resource_plan["low_memory_mode"] = mem["free_ram_gib"] < minimum
+    resource_plan["commit_available_gib"] = round(commit_available / 2**30, 2)
+    commit_short = commit_available < commit_floor(commit_limit) + 2**30
+    ram_only = commit_short and not errors
+    if commit_short:
+        errors.append(f"commit 여유 {commit_available/2**30:.2f}GiB로 메모리 할당 실패 위험이 있습니다. 큰 프로그램을 닫거나 페이지 파일을 늘리세요.")
     free_disk = round(shutil.disk_usage(root if root.exists() else Path(root.anchor)).free / 2**30, 2)
     if free_disk < 1:
         errors.append("선택한 SSD의 여유 공간이 1GB 미만입니다.")
@@ -349,10 +370,11 @@ def normalize(value):
     if continuous and (len(scenes) != 1 or preset == "smoke"):
         raise ValueError("연속 촬영은 preview/quality의 단일 장면만 허용합니다. 여러 클립을 이어 붙이지 않습니다.")
     duration = value.get("duration_seconds", 4 if continuous else 2)
-    if isinstance(duration, bool) or not isinstance(duration, int) or duration not in {2, 4, 8}:
-        raise ValueError("duration_seconds는 2, 4, 8 중 하나입니다.")
+    from .backend import DURATIONS
+    if isinstance(duration, bool) or not isinstance(duration, int) or duration not in DURATIONS:
+        raise ValueError(f"duration_seconds는 {', '.join(map(str, DURATIONS))} 중 하나입니다.")
     if not continuous and duration != 2:
-        raise ValueError("4초/8초 영상은 continuous=true로 요청하세요.")
+        raise ValueError("2초보다 긴 영상은 continuous=true로 요청하세요. 한 번의 생성으로 이어서 만듭니다.")
     normalized = []
     seen = set()
     for index, item in enumerate(scenes):
@@ -418,6 +440,12 @@ def normalize(value):
     if profile == "neodragon":
         from .neodragon import pipeline_revision as neo_revision
         pipeline_revision = neo_revision(APP)
+    video_model = value.get("video_model", "auto")
+    if video_model not in {"auto", "neo", "ltx", "skyreels"} or (video_model != "auto" and profile != "neodragon"):
+        raise ValueError("video_model은 neodragon 경로에서 auto, neo, ltx, skyreels 중 하나입니다.")
+    anchor_end = value.get("anchor_end")
+    if anchor_end is not None and (isinstance(anchor_end, bool) or not isinstance(anchor_end, (int, float)) or not 0 < anchor_end <= 1):
+        raise ValueError("anchor_end는 0보다 크고 1 이하인 수입니다(마지막 프레임을 첫 화면 구도에 묶는 강도).")
     diagnostic = value.get("diagnostic", False)
     if not isinstance(diagnostic, bool):
         raise ValueError("diagnostic은 true 또는 false여야 합니다.")
@@ -439,6 +467,8 @@ def normalize(value):
             "domain": domain,
             "pipeline_revision": pipeline_revision,
             "diagnostic": diagnostic,
+            "video_model": video_model,
+            **({"anchor_end": float(anchor_end)} if anchor_end is not None else {}),
             "model_profile": profile, "_model_spec": spec,
             "model_revision": hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest(),
             "backend": backend, "device_plan": selected, "threads": cfg["threads"],
@@ -463,12 +493,18 @@ def status(job_id):
         kernel.OpenProcess.argtypes = [ctypes.c_ulong, ctypes.c_int, ctypes.c_ulong]
         kernel.GetExitCodeProcess.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_ulong)]
         kernel.CloseHandle.argtypes = [ctypes.c_void_p]
+        kernel.GetProcessTimes.argtypes = [ctypes.c_void_p] + [ctypes.POINTER(ctypes.c_ulonglong)] * 4
         handle = kernel.OpenProcess(0x1000, False, state["worker_pid"])
         alive = True
         if handle:
             exit_code = ctypes.c_ulong()
             if kernel.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
                 alive = exit_code.value == 259
+            # Windows reuses PIDs: a process that started after the job was created is not its worker.
+            times = [ctypes.c_ulonglong() for _ in range(4)]
+            if alive and kernel.GetProcessTimes(handle, *[ctypes.byref(t) for t in times]):
+                started = times[0].value / 1e7 - 11644473600
+                alive = started <= state.get("created_at", started) + 30
             kernel.CloseHandle(handle)
         elif ctypes.get_last_error() == 87:
             alive = False
@@ -534,6 +570,17 @@ def _require_startable(check, diagnostic):
     if not diagnostic and not check.get("quality_ready", check.get("ready_for_generation", False)):
         raise RuntimeError("영상 품질 검증이 실패했거나 아직 완료되지 않았습니다. 제작 작업을 시작하지 않았습니다.")
 
+def _require_supported_duration(request, check):
+    """Long clips need the long-video model; on Neo-only computers they are accepted only as diagnostics."""
+    view = check.get("accelerator") or {}
+    maximum = view.get("maximum_duration_seconds", 8)
+    duration = request.get("duration_seconds", 2) if request.get("continuous") else 2
+    if duration > maximum and not request.get("diagnostic"):
+        raise ValueError(f"이 컴퓨터의 정식 최대 길이는 {maximum}초입니다({view.get('video_model', 'Neo')}). "
+                         f"Neo는 약 7초 이후 화면이 무너져 {duration}초는 diagnostic=true 시험으로만 요청할 수 있습니다. "
+                         f"사유: {view.get('model_tier_reason') or view.get('reason') or 'NVIDIA 장시간 모델 없음'}")
+
+
 def submit(value):
     request = normalize(value)
     _, root = load_config()
@@ -543,6 +590,7 @@ def submit(value):
         # Production readiness is checked before reusing an earlier job too.
         check = doctor(profile=request["model_profile"])
         _require_startable(check, False)
+        _require_supported_duration(request, check)
     digest = hashlib.sha256(json.dumps(request, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     jobs = runtime_path(root, "jobs")
     reused = _indexed_request(root, digest)
@@ -571,6 +619,8 @@ def submit(value):
     write_json(job / "status.json", initial)
     env = os.environ.copy()
     temporary = runtime_path(root, "tmp")
+    from .storage import cache_environment
+    env.update(cache_environment(root))
     env.update(PYTHONDONTWRITEBYTECODE="1", PYTHONIOENCODING="utf-8", CVL_RUNTIME_DIR=str(root), TEMP=str(temporary), TMP=str(temporary))
     flags = (subprocess.CREATE_NO_WINDOW | subprocess.BELOW_NORMAL_PRIORITY_CLASS) if os.name == "nt" else 0
     try:
@@ -638,8 +688,8 @@ def worker(job_id):
         request = read_json(job / "request.json")
         check = doctor(profile=request["model_profile"])
         if not check["ready"] and check.get("ram_shortfall_only"):
-            from local_video.resources import wait_for_memory
-            wait_for_memory(check["minimum_free_ram_gib"], cancelled, progress)
+            from local_video.resources import wait_for_commit
+            wait_for_commit(2**30, cancelled, progress)
             check = doctor(profile=request["model_profile"])
         if not check["ready"]:
             raise RuntimeError("실행 직전 자원 확인 실패: " + "; ".join(check["errors"]))
@@ -653,7 +703,7 @@ def worker(job_id):
             from local_video.neodragon import generate_project
         else:
             from local_video.backend import generate_project
-        from local_video.resources import stage_limits, start_requirement_gib, wait_for_memory
+        from local_video.resources import learned_need_bytes, wait_for_commit
         for attempt in range(MEMORY_RETRIES + 1):
             try:
                 result = generate_project(request, runtime_path(root, "jobs", job_id, "output"), runtime_path(root, "cache", "shots"), runtime_path(root, "models"), progress, cancelled)
@@ -663,7 +713,9 @@ def worker(job_id):
                 if attempt == MEMORY_RETRIES or cancelled():
                     raise
                 progress({"stage": "waiting_for_memory", "memory_retry": attempt + 1, "memory_error": str(exc)[:300]})
-                wait_for_memory(start_requirement_gib(root, None, stage_limits(request)), cancelled, progress)
+                frames = int(request.get("duration_seconds", 2)) * 24 + 1 if request.get("continuous") else 49
+                # Retry once commit can cover the stage again (it ran short); free RAM is not required.
+                wait_for_commit(max(learned_need_bytes(root, "video_infer", frames), 2**30), cancelled, progress)
                 progress({"stage": "loading", "memory_retry": attempt + 1})
         if cancelled():
             raise InterruptedError("취소됐습니다.")

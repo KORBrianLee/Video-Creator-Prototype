@@ -45,9 +45,11 @@ def quantize_linears(module, packed_placeholder=False):
 
 def load_mapped_model(cls, folder: Path, dtype):
     """Load a Diffusers model by assigning mapped tensors into a meta skeleton."""
+    from .readonly_weights import load_readonly
     with init_empty_weights():
         model = cls.from_config(cls.load_config(folder, local_files_only=True))
-    state = load_file(str(folder / "diffusion_pytorch_model.safetensors"), device="cpu")
+    # One read-only mapping: no copy-on-write commit for the weights (see readonly_weights).
+    state = load_readonly(str(folder / "diffusion_pytorch_model.safetensors"))
     model.load_state_dict(state, strict=True, assign=True)
     # Release the dictionary before quantization; otherwise it keeps every
     # original weight alive after its module has been replaced.
@@ -111,12 +113,16 @@ class MappedLinearTorchGPU(MappedLinearCPU):
     def upload(cls, bf16_cpu, device, bitwise=None):
         bitwise = cls.bitwise_for(device) if bitwise is None else bitwise
         data = bf16_cpu.detach().contiguous()
-        return data.view(torch.int32).to(device) if bitwise else data.to(device)
+        if bitwise and data.numel() % 2:
+            return data.float().to(device)  # odd element count cannot pair into 32-bit words
+        return data.reshape(-1).view(torch.int32).to(device) if bitwise else data.to(device)
 
     @classmethod
     def widen_stored(cls, stored, shape, bitwise):
         """BF16 -> FP32 on the GPU. The bit form is exact: two BF16 values share one 32-bit word and
         each is the top half of an FP32 word."""
+        if stored.dtype == torch.float32:
+            return stored.reshape(*shape)
         if not bitwise:
             return stored.float()
         even = (stored << 16).view(torch.float32)
@@ -147,6 +153,41 @@ class MappedLinearTorchGPU(MappedLinearCPU):
 MappedLinearXPU = MappedLinearTorchGPU
 
 
+class MappedConvTorchGPU(torch.nn.Module):
+    """A Conv2d/Conv3d whose BF16 weight stays on the CPU side and is widened to FP32 on the GPU per call.
+
+    Large video VAEs (LTX: 2.3 GB BF16, 4.6 GB in FP32) do not fit next to the transformer in an
+    integrated GPU's shared memory when converted whole.
+    """
+    def __init__(self, original):
+        super().__init__()
+        self.original = original
+        self.weight_cpu = original.weight.detach()
+        self.bias_cpu = original.bias.detach().float() if original.bias is not None else None
+        del original.weight
+        if original.bias is not None:
+            del original.bias
+        original.register_parameter("weight", None)
+        original.register_parameter("bias", None)
+
+    def forward(self, value):
+        device = value.device
+        weight = MappedLinearTorchGPU.widen(self.weight_cpu, device)
+        bias = self.bias_cpu.to(device) if self.bias_cpu is not None else None
+        return self.original._conv_forward(value.float(), weight, bias)
+
+
+def stream_convs(module):
+    count = 0
+    for key, child in list(module.named_children()):
+        if type(child) in (torch.nn.Conv2d, torch.nn.Conv3d):
+            setattr(module, key, MappedConvTorchGPU(child))
+            count += 1
+        else:
+            count += stream_convs(child)
+    return count
+
+
 def linear_weight_bytes(module):
     return sum(child.weight.numel() * child.weight.element_size() for child in module.modules() if type(child) is torch.nn.Linear)
 
@@ -170,7 +211,7 @@ def stream_linears(module, engine=None, device=None, resident=False):
 
 def float_non_linear_parameters(module, device=None):
     for child in module.modules():
-        if isinstance(child, MappedLinearCPU):
+        if isinstance(child, (MappedLinearCPU, MappedConvTorchGPU)):
             continue
         for key, value in list(child.named_parameters(recurse=False)):
             if value.is_floating_point():

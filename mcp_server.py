@@ -20,7 +20,8 @@ TOOLS = [
     {"name": "video_generate", "description": "장면 요청으로 로컬 CPU에서 실제 움직임을 생성한다. 기본 Neodragon: 512×320, 49프레임, 약 2초/장면. 기존 실패 모델은 명시적인 진단만 허용한다.", "inputSchema": {"type": "object", "properties": {"title": {"type": "string"}, "script": {"type": "string"}, "diagnostic": {"type": "boolean", "default": False}, "preset": {"type": "string", "enum": ["preview", "quality"]}, "seed": {"type": "integer"}, "scenes": {"type": "array", "minItems": 1, "maxItems": 12, "items": {"type": "object", "properties": {"id": {"type": "string"}, "prompt": {"type": "string"}, "negative_prompt": {"type": "string"}, "seed": {"type": "integer"}, "image_path": {"type": "string", "description": "선택 사항: D 실행 폴더 안의 참고 이미지 절대 경로"}}, "required": ["prompt"]}}}, "required": ["scenes"]}},
     {"name": "video_status", "description": "작업 진행·오류 또는 완료 영상 경로를 짧게 읽는다.", "inputSchema": {"type": "object", "properties": {"job_id": {"type": "string"}}, "required": ["job_id"]}},
     {"name": "video_wait", "description": "최대 60초 로컬에서 기다려 잦은 상태 조회와 토큰 소비를 줄인다.", "inputSchema": {"type": "object", "properties": {"job_id": {"type": "string"}, "seconds": {"type": "integer", "minimum": 0, "maximum": 60}}, "required": ["job_id"]}},
-    {"name": "video_cancel", "description": "이 생성기의 지정 작업을 취소한다.", "inputSchema": {"type": "object", "properties": {"job_id": {"type": "string"}}, "required": ["job_id"]}}
+    {"name": "video_cancel", "description": "이 생성기의 지정 작업을 취소한다.", "inputSchema": {"type": "object", "properties": {"job_id": {"type": "string"}}, "required": ["job_id"]}},
+    {"name": "video_digest", "description": "끝난 작업의 2KB 이하 요약: 단계별 시간·메모리, GPU 사용, 화면 어두워짐·색 붕괴·정지 경고. 상태 전체나 로그 대신 이것만 읽는다. 경고가 있을 때만 review_image를 연다.", "inputSchema": {"type": "object", "properties": {"job_id": {"type": "string"}}, "required": ["job_id"]}}
 ]
 TOOLS[1]["inputSchema"]["properties"]["model_profile"] = {"type": "string", "enum": ["neodragon", "lightning", "wan"], "default": "neodragon"}
 from local_video.site_profiles import PROFILES, catalog
@@ -32,7 +33,7 @@ schema["anyOf"] = [{"required": ["scenes"]}, {"required": ["site_template"]}]
 schema["properties"].update({
     "site_template": {"type": "string", "enum": list(PROFILES), "description": "미리 준비한 현장 동작. scenes와 동시에 지정하지 않는다."},
     "continuous": {"type": "boolean", "description": "한 장면에서 이전 움직임을 이어받아 생성. 현장 템플릿 기본 true."},
-    "duration_seconds": {"type": "integer", "enum": [2, 4, 8], "description": "연속 모드 길이. 현장 초안 기본 2초. 4초 후반 품질 실패 이력 있음; 8초 미검증. RAM 상한 동일."},
+    "duration_seconds": {"type": "integer", "enum": [2, 4, 8, 10, 15], "description": "연속 모드 길이. 한 번의 생성으로 이어서 만들며 클립을 이어 붙이지 않는다. 외장 NVIDIA GPU(VRAM 8GB 이상)는 장시간 전용 모델(SkyReels)로 15초까지 정식 생성한다. 그 외(Neo)는 8초까지 정식이며 10/15초는 화면이 무너져 diagnostic=true 시험만 허용한다. video_doctor의 accelerator.maximum_duration_seconds를 먼저 확인한다. 현장 초안 기본 2초."},
     "domain": {"type": "string", "enum": ["general", "construction"], "description": "중장비·작업자 현장은 construction. 현장 사실감 미달로 diagnostic=true 시험만 허용."},
     "cpu_precision": {"type": "string", "enum": ["int8", "bf16_stream"], "description": "preview 기본 int8, quality 기본 bf16_stream: 원본 행렬을 D에서 매핑하고 현재 계산만 FP32로 변환. RAM 상한 동일."},
 })
@@ -119,6 +120,9 @@ def dispatch(method, params):
                 result = control.wait(args["job_id"], args.get("seconds", 45))
             elif name == "video_cancel":
                 result = control.cancel(args["job_id"])
+            elif name == "video_digest":
+                from local_video.digest import job_digest
+                result = job_digest(args["job_id"])
             else:
                 raise ValueError("알 수 없는 도구입니다.")
             return {"content": [{"type": "text", "text": json.dumps(compact(result), ensure_ascii=False, separators=(",", ":"))}]}

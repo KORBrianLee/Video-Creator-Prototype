@@ -11,7 +11,7 @@ if (-not $RuntimeDir) {
     } elseif ((Split-Path -Leaf $PSScriptRoot) -eq 'app' -and (Test-Path -LiteralPath (Join-Path $taskParent 'runtime\python\python.exe') -PathType Leaf)) {
         $RuntimeDir = $taskParent
     } else {
-        $RuntimeDir = 'C:\CursorVideoRuntime'
+        $RuntimeDir = 'D:\VideoCreator\CursorVideoRuntime'
     }
 }
 if (-not $NoPull) {

@@ -223,6 +223,82 @@ def torch_runtime_needed(root, profile, no_gpu_torch, detect=detect_torch_runtim
     return [] if current else [f"runtime/{accelerator.BACKENDS[backend]['site']}"]
 
 
+def skyreels_needed(root, profile, no_gpu_torch, detect=detect_torch_runtime):
+    """The long-video model is only downloaded for computers whose main GPU is NVIDIA (CUDA tier)."""
+    if profile != "neodragon" or no_gpu_torch or os.name != "nt":
+        return []
+    backend, _ = detect(root)
+    if backend != "cuda":
+        return []
+    from local_video import skyreels
+    return [] if skyreels.installed(root, SOURCE) else ["models/skyreels-v2-df-1.3b"]
+
+
+def ltx_needed(root, profile, no_gpu_torch, detect=detect_torch_runtime):
+    """LTX-Video (long clips on Intel GPUs) is downloaded only when the main GPU uses the XPU runtime."""
+    if profile != "neodragon" or no_gpu_torch or os.name != "nt":
+        return []
+    backend, _ = detect(root)
+    if backend != "xpu":
+        return []
+    from local_video import ltx
+    return [] if ltx.installed(root, SOURCE) else ["models/ltx-video-2b-0.9.8"]
+
+
+def install_skyreels(root, convert=None):
+    from local_video import skyreels
+    return install_locked_model(root, skyreels.LOCK, convert)
+
+
+def install_locked_model(root, lock_name, convert=None):
+    """Download each locked file, verify it, and rewrite FP32 shards as BF16 right away (resumable).
+
+    Peak extra disk is one FP32 shard (about 5 GB). Files may come from different repositories
+    (`repo`/`revision`/`source` per file); otherwise the lock's repo and the file path are used.
+    """
+    from local_video import skyreels
+    lock = json.loads((SOURCE / lock_name).read_text(encoding="utf-8"))
+    target = inside(root, "models", lock["folder"])
+    target.mkdir(parents=True, exist_ok=True)
+    record_path = target / "install-record.json"
+    try:
+        record = json.loads(record_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        record = {}
+    if record.get("revision") != lock["revision"]:
+        record = {"revision": lock["revision"], "files": {}}
+    pending = [item for item in lock["files"] if item["path"] not in record["files"] or not (target / item["path"]).is_file()]
+    final_bytes = sum(item["size"] // 2 if item["convert_to_bf16"] else item["size"] for item in pending)
+    largest = max((item["size"] for item in pending), default=0)
+    if pending and shutil.disk_usage(root).free < final_bytes + largest + 2 * 2**30:
+        need = round((final_bytes + largest + 2 * 2**30) / 2**30)
+        raise ValueError(f"{lock['model']} 모델을 받을 SSD 여유 공간이 부족합니다(약 {need}GB 필요).")
+    if convert is None:
+        python = inside(root, "runtime", "neodragon-python", "python.exe")
+        def convert(path):
+            result = subprocess.run([str(python), "-B", str(SOURCE / "local_video" / "skyreels.py"), "--convert", str(path)],
+                                    env={**os.environ, "TMP": str(root / "tmp"), "TEMP": str(root / "tmp")})
+            if result.returncode:
+                raise RuntimeError(f"BF16 변환 실패: {path.name}")
+    for item in pending:
+        destination = inside(root, "models", lock["folder"], *item["path"].split("/"))
+        url = (f'https://huggingface.co/{item.get("repo", lock.get("repo"))}/resolve/'
+               f'{item.get("revision", lock["revision"])}/{item.get("source", item["path"])}')
+        download(url, destination, item["sha256"], item["size"])
+        if item["convert_to_bf16"]:
+            convert(destination)
+        record["files"][item["path"]] = sha(destination)
+        record_path.write_text(json.dumps(record, indent=2), encoding="utf-8")
+    converted_folders = {item["path"].rsplit("/", 1)[0] for item in lock["files"] if item["convert_to_bf16"] and "/" in item["path"]}
+    for index in [item["path"] for item in lock["files"] if item["path"].endswith(".safetensors.index.json")]:
+        if index.rsplit("/", 1)[0] in converted_folders and (target / index).is_file():
+            skyreels.fix_index_total_size(target / index)
+            record["files"][index] = sha(target / index)
+    record_path.write_text(json.dumps(record, indent=2), encoding="utf-8")
+    print(json.dumps({"model": lock["model"], "state": "installed", "folder": str(target)}, ensure_ascii=False), flush=True)
+    return True
+
+
 def install_torch_runtime(root, detect=detect_torch_runtime):
     """Hash-pinned install beside the CPU runtime. Failure leaves the CPU/Vulkan/OpenCL paths working."""
     from local_video import accelerator
@@ -278,7 +354,8 @@ def main():
     baseline = installed_digests(root)
     if args.action == "update":
         stale = [name for name in install_locks(args.profile) if baseline.get(name) != lock_digest(SOURCE / name)]
-        stale += missing_engines(root, args.with_vulkan) + torch_runtime_needed(root, args.profile, args.no_gpu_torch)
+        stale += (missing_engines(root, args.with_vulkan) + torch_runtime_needed(root, args.profile, args.no_gpu_torch)
+                  + skyreels_needed(root, args.profile, args.no_gpu_torch) + ltx_needed(root, args.profile, args.no_gpu_torch))
         print(json.dumps({"update": "full_verify" if stale else "code_only", "changed_locks": stale}), flush=True)
         args.action = "all" if stale else "deploy"
         verified = not stale
@@ -317,6 +394,13 @@ def main():
                 prepare(root, json.loads((SOURCE / "neodragon-research.lock.json").read_text(encoding="utf-8")))
             if torch_runtime_needed(root, args.profile, args.no_gpu_torch):
                 install_torch_runtime(root)
+            for needed, lock_name in ((skyreels_needed, "skyreels.lock.json"), (ltx_needed, "ltx.lock.json")):
+                if needed(root, args.profile, args.no_gpu_torch):
+                    try:
+                        install_locked_model(root, lock_name)
+                    except (OSError, ValueError, RuntimeError) as exc:
+                        print(json.dumps({"long_video_model": "not_installed", "lock": lock_name, "reason": str(exc)[:200],
+                                          "effect": "Neo is used, up to 8 seconds", "retry": "update.cmd"}, ensure_ascii=False), flush=True)
     if args.action in {"models", "all"}:
         missing_bytes = sum(x["size"] for x in model_lock["files"] if not (root / "models" / x["filename"]).is_file())
         if shutil.disk_usage(root).free < missing_bytes + 2 * 2**30:

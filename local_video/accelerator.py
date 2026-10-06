@@ -116,13 +116,56 @@ def _write_record(root, backend, record):
 
 def mark_failed(root, backend, reason):
     """A GPU stage failed at run time: stop choosing this backend until the next probe window."""
-    _write_record(root, backend, {"ok": False, "reason": str(reason)[:300], "signature": _signature(root, backend),
+    signature = _signature(root, backend) if backend in BACKENDS else None
+    _write_record(root, backend, {"ok": False, "reason": str(reason)[:300], "signature": signature,
                                   "checked_at": time.time(), "failed_at_runtime": True})
 
 
+def recently_failed(root, name, window=3600.0):
+    try:
+        record = json.loads(_record_path(root, name).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if record.get("failed_at_runtime") and time.time() - record.get("checked_at", 0) < window:
+        return record.get("reason", "failed")
+    return None
+
+
+LONG_VIDEO_TIERS = ("skyreels", "ltx")
+
+
+def model_tier(root, backend, discrete, total_memory_bytes, installed=None, ltx_installed=None):
+    """Video model for this computer: 'skyreels' (NVIDIA, VRAM >= 8 GB), 'ltx' (Intel XPU or CUDA), else 'neo'.
+
+    SkyReels and LTX make 15s clips in one generation; Neo is limited to 8s (it degrades after about 7s).
+    """
+    from . import ltx, skyreels
+    source = Path(__file__).resolve().parents[1]
+    reasons = []
+    if backend == "cuda" and discrete and (total_memory_bytes or 0) >= skyreels.MINIMUM_VRAM_GIB * 2**30:
+        if installed is None:
+            installed = skyreels.installed(root, source)
+        failed = recently_failed(root, "skyreels")
+        if installed and not failed:
+            return "skyreels", None
+        reasons.append("skyreels_failed_recently: " + failed[:120] if failed else "skyreels_not_installed")
+    elif backend == "cuda":
+        reasons.append(f"skyreels_needs_discrete_{skyreels.MINIMUM_VRAM_GIB:g}gib_vram")
+    if backend in BACKENDS:
+        if ltx_installed is None:
+            ltx_installed = ltx.installed(root, source)
+        failed = recently_failed(root, "ltx")
+        if ltx_installed and not failed:
+            return "ltx", None
+        reasons.append("ltx_failed_recently: " + failed[:120] if failed else "ltx_not_installed")
+    else:
+        reasons.append("long_video_model_needs_nvidia_or_intel_gpu")
+    return "neo", "; ".join(reasons)
+
+
 def choose(root, selected_device, backend_setting="auto"):
-    """Pick the torch device for the selected GPU: {'torch_device', 'torch_backend', 'discrete', ...}."""
-    cpu = {"torch_device": "cpu", "torch_backend": None, "discrete": False}
+    """Pick the torch device and model tier for the selected GPU."""
+    cpu = {"torch_device": "cpu", "torch_backend": None, "discrete": False, "model_tier": "neo"}
     if backend_setting == "cpu" or os.environ.get("CVL_NO_TORCH_GPU") or not selected_device:
         return cpu
     backend = backend_for_vendor(selected_device.get("vendor"))
@@ -131,8 +174,11 @@ def choose(root, selected_device, backend_setting="auto"):
     record = probe(root, backend)
     if not record.get("ok"):
         return {**cpu, "reason": record.get("reason", "probe_failed")[:200]}
-    return {"torch_device": backend, "torch_backend": backend, "discrete": not selected_device.get("shared_memory", True),
-            "device_name": record.get("device"), "total_memory_bytes": record.get("total_memory_bytes")}
+    discrete = not selected_device.get("shared_memory", True)
+    tier, tier_reason = model_tier(root, backend, discrete, record.get("total_memory_bytes"))
+    return {"torch_device": backend, "torch_backend": backend, "discrete": discrete,
+            "device_name": record.get("device"), "total_memory_bytes": record.get("total_memory_bytes"),
+            "model_tier": tier, "model_tier_reason": tier_reason}
 
 
 def vram_free_bytes(torch, device):
@@ -229,6 +275,17 @@ def patch_vendor_for_fp32_gpu(torch):
 
 def describe(root, selected_device, backend_setting="auto"):
     """Doctor view of the torch GPU choice, including why a GPU is not used."""
+    from . import backend, ltx, skyreels
     choice = choose(root, selected_device, backend_setting)
-    return {**choice, "backends_installed": [name for name in BACKENDS if site(root, name).is_dir()],
-            "weights": "resident_when_vram_fits_else_streamed" if choice.get("discrete") else "streamed"}
+    tier = choice.get("model_tier", "neo")
+    long_video = tier in LONG_VIDEO_TIERS
+    view = {**choice, "backends_installed": [name for name in BACKENDS if site(root, name).is_dir()],
+            "weights": "resident_when_vram_fits_else_streamed" if choice.get("discrete") else "streamed",
+            "maximum_duration_seconds": max(backend.DURATIONS) if long_video else 8,
+            "diagnostic_only_durations": [] if long_video else [d for d in backend.DURATIONS if d > 8],
+            "video_model": {"skyreels": "SkyReels-V2 DF 1.3B", "ltx": "LTX-Video 2B 0.9.8 distilled"}.get(tier, "Neo")}
+    if tier == "skyreels":
+        view["long_video_settings_15s"] = skyreels.settings_for(choice.get("total_memory_bytes"), 15)
+    elif tier == "ltx":
+        view["long_video_settings_15s"] = ltx.settings_for(15)
+    return view
