@@ -3,8 +3,19 @@ Personal-Learning Free, Institutional Teaching Licensed, No-Derivatives License 
 
 Copyright (c) 2026 KORBrianLee. All rights reserved except as stated below.
 
+SUMMARY (for users worldwide; the full terms below are binding)
+- FREE only for an individual's own personal learning.
+- Companies, private academies, universities and other institutions that teach with this
+  Software (e.g. vision AI courses) with state or public funding, or that charge students
+  any fee, MUST buy a license or obtain prior written permission.
+- No commercial use, no modification or derivative works, no redistribution, and no hosted
+  service without prior written permission.
+- Violations will be pursued for damages to the fullest extent permitted by applicable law.
+- This license is effective worldwide. Contact: https://github.com/KORBrianLee
+
 이 라이선스는 이 저장소의 프로젝트 소스 코드와 문서(이하 "소프트웨어")에 적용된다.
-한국어 본문이 원문이며, 영어 번역과 내용이 다르면 한국어 본문이 우선한다.
+한국어 본문과 영어 본문은 동등한 효력을 가지는 원문이다. 두 본문의 해석이 다르면
+저작권자의 권리를 더 넓게 보호하는 해석을 따른다.
 
 1. 무료로 허용되는 사용 (개인 학습 전용)
    다음 조건을 모두 지키는 개인에 한해, 소프트웨어를 내려받아 원본 그대로
@@ -73,8 +84,20 @@ Copyright (c) 2026 KORBrianLee. All rights reserved except as stated below.
    어떠한 명시적·묵시적 보증도 하지 않는다. 저작권자는 소프트웨어의 사용 또는 사용
    불능으로 생긴 어떠한 손해에도 책임지지 않는다.
 
+10. 국제 적용, 준거법과 관할
+   (a) 이 라이선스는 지역과 관계없이 전 세계의 모든 사용자에게 적용된다. 소프트웨어는
+       문학·예술적 저작물의 보호를 위한 베른협약, WTO 무역관련지식재산권협정(TRIPS),
+       WIPO 저작권조약(WCT) 가입국에서 각국 법에 따라 보호된다.
+   (b) 이 라이선스는 대한민국 법을 준거법으로 한다. 이 라이선스와 관련된 분쟁은
+       서울중앙지방법원을 제1심 관할법원으로 한다. 다만 저작권자는 침해가 일어난
+       국가의 법원에 그 나라 법에 따른 청구를 제기할 수도 있다.
+   (c) 어느 조항이 특정 국가에서 무효이거나 집행할 수 없는 경우에도 나머지 조항은
+       유효하며, 해당 조항은 그 국가의 법이 허용하는 최대 범위에서 적용된다.
+   (d) 소프트웨어를 내려받거나 설치·실행하면 이 라이선스에 동의한 것으로 본다.
+
 ----------------------------------------------------------------------------------------
-English translation (the Korean text above prevails in case of any difference)
+English text (equally authentic with the Korean text above; where the two are read
+differently, the reading that better protects the copyright holder applies)
 
 1. Free use (personal learning only). An individual may download, install and run the
    unmodified Software and read its source free of charge, only if (a) the use is solely
@@ -119,3 +142,13 @@ English translation (the Korean text above prevails in case of any difference)
    and against the persons who directed or knowingly allowed the breach.
 9. The Software is provided "as is", without warranty of any kind. The copyright holder is
    not liable for any damages arising from its use or inability to use it.
+10. International scope, governing law and venue. (a) This license applies to every user
+   worldwide. The Software is protected in the member states of the Berne Convention for
+   the Protection of Literary and Artistic Works, the WTO TRIPS Agreement and the WIPO
+   Copyright Treaty under their national laws. (b) This license is governed by the laws of
+   the Republic of Korea, and the Seoul Central District Court has first-instance
+   jurisdiction over disputes; the copyright holder may also bring claims in the courts of
+   any country where an infringement occurs, under that country's law. (c) If a provision is
+   invalid or unenforceable in a country, the remaining provisions stay in force and that
+   provision applies to the fullest extent that country's law permits. (d) Downloading,
+   installing or running the Software constitutes acceptance of this license.

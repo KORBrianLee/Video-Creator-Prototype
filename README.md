@@ -1,5 +1,9 @@
 # Cursor 로컬 영상 생성기 0.7.3
 
+> **License notice (worldwide).** Free **only for an individual's own personal learning**. Companies, private academies, universities and other institutions that use this software in teaching (for example vision AI courses) **with state or public funding, or while charging students any fee, must buy a license or obtain prior written permission**. Commercial use, modification, derivative works, redistribution and hosted services also require prior written permission. Violations will be pursued for damages to the fullest extent permitted by applicable law. Full terms (Korean and English, equally authentic): [LICENSE](LICENSE). Contact: [KORBrianLee](https://github.com/KORBrianLee).
+>
+> **라이선스 안내.** 개인의 학습 목적 사용만 무료입니다. 국가·공공 지원을 받거나 수강료를 받고 수업을 진행하는 회사·학원·대학·기관은 라이선스 구입 또는 사전 서면 허락이 필요합니다. 전문은 [LICENSE](LICENSE)를 보세요.
+
 **설계 기준은 LG 그램: RAM 약 16GB, Intel Iris 내장 GPU, 평소 RAM 여유가 적은 Windows 노트북이다.** 더 좋은 컴퓨터에서는 아래 자원 한계가 자동으로 넓어지고, 그램에서는 검증된 값으로 동작한다.
 
 ## 설치와 업데이트
