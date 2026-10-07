@@ -2,6 +2,16 @@
 
 확인일: 2026-10-01. 실행 위치: `D:\CursorVideoLocal`. 이 문서는 외부 구성요소의 권리 출처와 사용 조건을 기록한다. 모델의 성능, LG 그램에서의 실행 시간, 생성 결과물의 모든 제삼자 권리를 보증하는 문서가 아니다.
 
+## 2026-10-07 Intel GPU 기본 장시간 모델: LTX-Video 2B 0.9.8 distilled
+
+| 구성 | 적용 조건 |
+|---|---|
+| LTX-Video 가중치 | [LTX-Video Open Weights License](licenses/LTX-Video-Open-Weights-License-0.X.txt). 무상·비독점 사용권. 재배포하거나 원격 서비스로 제공할 때 이 원문을 함께 주고(3.2), 변경한 파일에 변경 고지를 하며(3.3), Attachment A의 이용 제한을 사용·배포 계약에 강제 조항으로 넣어야 한다(3.1). 프로젝트 LICENSE 5(b)가 이 이용 제한을 사용자에게 적용한다. 생성 결과물에 대해 라이선스 제공자는 권리를 주장하지 않지만(5), 결과물과 그 사용의 책임은 사용자에게 있다. 우리가 보관한 0.X 원문에는 매출 상한 조항이 없다. |
+| T5 텍스트 인코더 | LTX 저장소에 함께 있는 Google T5 v1.1 XXL 인코더, Apache-2.0. 설치 시 BF16으로 변환해 로컬에만 둔다(재배포하지 않음). |
+| 실행 방식 | 설치기가 고정 revision·해시로 공식 저장소에서 직접 내려받는다. 이 저장소는 가중치를 포함하거나 재배포하지 않는다. 프로젝트 코드는 diffusers·transformers의 공개 API를 호출하고 일부 메서드를 실행 중에 감쌀 뿐, 그 소스 코드를 복사해 넣지 않는다. |
+| 첫 프레임 | Cursor 내장 이미지 생성(GenerateImage) 결과는 사용자 실행 폴더(D)에만 두며 저장소에 넣지 않는다. 실존 인물·상표·로고·실제 현장 표시를 요청하지 않는다. |
+| SkyReels-V2(NVIDIA 전용) | [Skywork Community License](licenses/SkyReels-V2-Skywork-LICENSE.txt). 그 조건과 이용 제한을 함께 따른다. |
+
 ## 2026-10-02 현재 기본 모델
 
 기본 제작 경로를 SD 1.5 Q4 첫 이미지 + Neodragon 채널별 INT8 영상으로 바꿨다. 기존 Lightning·Wan은 진단 기록으로만 보존한다. 영상 49프레임의 시간 변화는 Neo가 생성하며 이전 이미지 전환·보간 방식은 실행하지 않는다.
@@ -102,6 +112,6 @@ FFmpeg는 프로젝트 안에서 영상 포장·인코딩에 사용하는 실행
 
 0.6.0 현장 참고 자료는 모델 라이선스와 별도다. ŠJů의 레일 현장 영상 2개는 **CC BY 4.0**, KEmel49의 굴착기/트럭 영상은 **CC BY-SA 4.0** 게시 조건을 확인했다. 원본·9개 참고 구간과 출처/해시는 D의 `datasets/construction-v1`에 함께 둔다. 저작자·출처·라이선스·변경을 표시하고 BY-SA 변형을 배포할 때는 동일/호환 조건도 유지한다. [자료별 원출처와 변경](SITE_ADAPTATION.md), [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). 새 모델의 신경망 훈련이나 재학습 가중치 배포 허여를 일괄 확인한 것이 아니다.
 
-릴리스의 `examples/site-draft.mp4`는 CC BY 참고 프레임을 조건으로 모델이 새 움직임을 생성한 **실험 초안**이다. 같은 폴더의 `site-draft-ATTRIBUTION.md`와 모델의 이용 조건을 함께 유지한다. MIT인 프로젝트 코드가 이 영상·참고 자료·모델 가중치를 일괄 MIT로 바꾸지 않는다.
+릴리스의 `examples/site-draft.mp4`는 CC BY 참고 프레임을 조건으로 모델이 새 움직임을 생성한 **실험 초안**이다. 같은 폴더의 `site-draft-ATTRIBUTION.md`와 모델의 이용 조건을 함께 유지한다. 프로젝트 라이선스(LICENSE, 개인 학습 무료·기관 교육 유료·변경 금지)는 이 영상·참고 자료·모델 가중치의 원래 라이선스를 바꾸지 않으며, CC BY 출처 표시를 제한하지 않는다.
 
 `docs/licenses/sources.json`에는 다운로드한 라이선스 사본의 출처 URL·확인일·크기·SHA-256이 있다. 프로젝트 코드는 모델·라이선스를 자동 변경하지 않는다. 모델이나 런타임 버전을 바꿀 때 lock의 revision·파일 해시, 이 고지, 해당 원문 사본을 함께 갱신한다. 새 LoRA·현실 모델·음성 모델을 추가할 때 기존 모델의 사용 가능성이 새 파일의 사용 허여를 대신하지 않는다.
