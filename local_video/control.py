@@ -449,6 +449,27 @@ def normalize(value):
     cond_noise = value.get("cond_noise")
     if cond_noise is not None and (isinstance(cond_noise, bool) or not isinstance(cond_noise, (int, float)) or not 0 <= cond_noise <= 1):
         raise ValueError("cond_noise는 0~1 사이 수입니다(키프레임 조건에 섞는 노이즈, 기본 0.15).")
+    keyframes = []
+    raw_keyframes = value.get("keyframes", [])
+    if not isinstance(raw_keyframes, list) or len(raw_keyframes) > 4:
+        raise ValueError("keyframes는 최대 4개의 목록입니다.")
+    for item in raw_keyframes:
+        _, image_root = load_config()
+        if not isinstance(item, dict) or not isinstance(item.get("at"), (int, float)) or isinstance(item.get("at"), bool) \
+                or not 0 < item["at"] < 1 or not item.get("image_path"):
+            raise ValueError("keyframes 항목은 image_path와 0~1 사이 at(영상 내 위치)을 가집니다.")
+        strength = item.get("strength", 0.9)
+        if isinstance(strength, bool) or not isinstance(strength, (int, float)) or not 0 < strength <= 1:
+            raise ValueError("keyframes strength는 0보다 크고 1 이하입니다.")
+        key_image = Path(item["image_path"])
+        if not key_image.is_absolute() or not key_image.resolve().is_relative_to(image_root):
+            raise ValueError("keyframes 이미지는 실행 폴더 안의 절대 경로여야 합니다.")
+        key_image = key_image.resolve(strict=True)
+        with key_image.open("rb") as stream:
+            keyframes.append({"path": str(key_image), "sha256": hashlib.file_digest(stream, "sha256").hexdigest(),
+                              "at": float(item["at"]), "strength": float(strength)})
+    if keyframes and anchor_end is None:
+        raise ValueError("keyframes는 anchor_end와 함께 사용합니다.")
     anchor_end_image = None
     if value.get("anchor_end_image"):
         _, image_root = load_config()
@@ -483,6 +504,7 @@ def normalize(value):
             **({"anchor_end": float(anchor_end)} if anchor_end is not None else {}),
             **({"anchor_end_image": anchor_end_image} if anchor_end_image else {}),
             **({"cond_noise": float(cond_noise)} if cond_noise is not None else {}),
+            **({"keyframes": keyframes} if keyframes else {}),
             "model_profile": profile, "_model_spec": spec,
             "model_revision": hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest(),
             "backend": backend, "device_plan": selected, "threads": cfg["threads"],

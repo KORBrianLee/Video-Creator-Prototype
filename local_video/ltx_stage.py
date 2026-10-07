@@ -43,6 +43,11 @@ def fp32_dtype(module, torch):
     return module
 
 
+def hashlib_sha256(path):
+    import hashlib
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
 def cpu_rope(rope, torch):
     """Rotary tables are built on the CPU: `theta ** linspace` (pow) fails with a UR error on Iris Xe.
 
@@ -268,13 +273,21 @@ def render(torch, device, root, first_frame, settings, prompt_embeds, mask, seed
         last = (settings["frames"] - 1) // 8 * 8
         end = image
         if settings.get("anchor_end_image"):
-            import hashlib
             end_path = Path(settings["anchor_end_image"]["path"])
-            if hashlib.sha256(end_path.read_bytes()).hexdigest() != settings["anchor_end_image"]["sha256"]:
+            if hashlib_sha256(end_path) != settings["anchor_end_image"]["sha256"]:
                 raise RuntimeError("anchor_end_image changed after the request")
             end = Image.open(end_path).convert("RGB").resize((settings["width"], settings["height"]))
-        inputs = {"conditions": [LTXVideoCondition(image=image, frame_index=0, strength=1.0),
-                                 LTXVideoCondition(image=end, frame_index=last, strength=float(anchor))],
+        conditions = [LTXVideoCondition(image=image, frame_index=0, strength=1.0)]
+        for key in settings.get("keyframes", []):
+            key_path = Path(key["path"])
+            if hashlib_sha256(key_path) != key["sha256"]:
+                raise RuntimeError("a keyframe changed after the request")
+            frame = max(8, round(key["at"] * (settings["frames"] - 1)) // 8 * 8)
+            conditions.append(LTXVideoCondition(
+                image=Image.open(key_path).convert("RGB").resize((settings["width"], settings["height"])),
+                frame_index=min(frame, last - 8), strength=float(key["strength"])))
+        conditions.append(LTXVideoCondition(image=end, frame_index=last, strength=float(anchor)))
+        inputs = {"conditions": conditions,
                   "image_cond_noise_scale": float(settings.get("image_cond_noise_scale", 0.15))}
     else:
         pipe = LTXImageToVideoPipeline(scheduler=scheduler, vae=vae, text_encoder=None, tokenizer=None, transformer=transformer)

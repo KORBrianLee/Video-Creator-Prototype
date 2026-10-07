@@ -154,6 +154,19 @@ class ControllerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             control.normalize({**self.request, "anchor_end": 0.8, "anchor_end_image": "relative.png"})
 
+    def test_middle_keyframes_are_checked_and_hashed(self):
+        image = self.root / "mid.png"
+        image.write_bytes(b"png")
+        result = control.normalize({**self.request, "anchor_end": 0.9,
+                                    "keyframes": [{"image_path": str(image), "at": 0.5}]})
+        self.assertEqual(result["keyframes"][0]["at"], 0.5)
+        self.assertEqual(result["keyframes"][0]["strength"], 0.9)
+        for bad in ([{"image_path": str(image), "at": 1.0}], [{"at": 0.5}], [{"image_path": "x.png", "at": 0.5}]):
+            with self.assertRaises(ValueError):
+                control.normalize({**self.request, "anchor_end": 0.9, "keyframes": bad})
+        with self.assertRaises(ValueError):
+            control.normalize({**self.request, "keyframes": [{"image_path": str(image), "at": 0.5}]})
+
     def test_normalize_rejects_invalid_inputs_and_scene_path_escape(self):
         cases = [None, [], {**self.request, "seed": True}, {**self.request, "seed": -1},
                  {**self.request, "preset": "unknown"}, {**self.request, "scenes": []},
