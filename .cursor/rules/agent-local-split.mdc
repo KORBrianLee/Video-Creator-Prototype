@@ -4,6 +4,7 @@ alwaysApply: true
 ---
 # Agent judges, local program runs
 
+- After each improvement round, once the next round is running in the background, commit and push any repository changes to `prototype` without waiting to be asked: first check the diff contains no personal paths, user names or team-project material (real company or site names, team scene lists), and that the full test suite passes; never force-push or rewrite history. Runtime plans, reports, videos and keyframes on D stay out of the repository.
 - Top rule: anything that needs storage or compute runs on D (`D:\VideoCreator\CursorVideoRuntime`). C is a portable OS volume: no models, caches, temp files, outputs, plans or reports there. The D root is not writable; use folders under `D:\VideoCreator`.
 
 - The agent chooses the goal, edits code, writes a plan, and reads one summary. The local program generates, waits, measures, checks quality signals, limits attempts and writes the summary.
