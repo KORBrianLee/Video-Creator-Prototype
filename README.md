@@ -56,4 +56,4 @@ SkyReels 경로는 이 개발 PC(Intel 내장 GPU)에서 실제로 실행하지 
 
 같은 입력의 완료 영상은 해시와 완전 해독 검사를 거쳐 재사용한다. 대본·시작 사진의 조건 계산도 로컬에서 재사용한다. GPU·드라이버·모델·계산 코드가 바뀌면 해당 캐시를 구분한다. 생성 중에는 `video_wait`로 최대 60초 기다려 Cursor의 잦은 상태 조회를 줄인다.
 
-프로젝트 코드는 MIT다. 기본 공개 가중치는 BSD-3-Clause-Clear와 Qualcomm Responsible AI License, 시작 이미지 모델은 Open RAIL-M 조건을 따른다. 무조건적인 MIT/Apache 번들로 표시하지 않는다. [이용·재배포 조건](docs/MODEL_LICENSES.md).
+프로젝트 코드와 문서는 [교육용 비상업 라이선스(변경 금지) 1.0](LICENSE)을 따른다. 비영리 교육 목적의 원본 그대로 사용만 허용하며, 상업적 사용·개조·변형·재배포는 저작권자의 사전 서면 허락이 필요하다. 이 파일이 포함되기 전 MIT로 공개된 버전은 당시 받은 사람에게 MIT가 유지된다. 기본 공개 가중치는 BSD-3-Clause-Clear와 Qualcomm Responsible AI License, 시작 이미지 모델은 Open RAIL-M 조건을 따른다. 무조건적인 MIT/Apache 번들로 표시하지 않는다. [이용·재배포 조건](docs/MODEL_LICENSES.md).
