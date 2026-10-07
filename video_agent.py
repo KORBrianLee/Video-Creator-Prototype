@@ -36,6 +36,14 @@ def main():
     compose.add_argument("end", type=Path)
     compose.add_argument("target", type=Path)
     compose.add_argument("--keep", action="append", required=True, help="x0,y0,x1,y1 (0~1), 여러 번 지정 가능")
+    paste = sub.add_parser("paste-region", help="한 프레임의 영역(사람 등)을 다른 프레임의 지정 위치에 붙이기(키프레임 위치 지정)")
+    paste.add_argument("source", type=Path)
+    paste.add_argument("base", type=Path)
+    paste.add_argument("target", type=Path)
+    paste.add_argument("--box", required=True, help="x0,y0,x1,y1 (0~1) 잘라낼 영역")
+    paste.add_argument("--at", required=True, help="x,y (0~1) 붙일 왼쪽 위 위치")
+    paste.add_argument("--scale", type=float, default=1.0)
+    paste.add_argument("--clean", type=Path, help="source에서 사람을 지운 배경판(사람 모양만 오려 붙이기)")
     args = parser.parse_args()
     try:
         from local_video.storage import cache_environment
@@ -70,6 +78,11 @@ def main():
             from local_video.frame_pick import compose_keyframe
             boxes = [tuple(float(v) for v in box.split(",")) for box in args.keep]
             result = compose_keyframe(args.start, args.end, boxes, args.target)
+        elif args.action == "paste-region":
+            from local_video.frame_pick import paste_region
+            result = paste_region(args.source, tuple(float(v) for v in args.box.split(",")), args.base,
+                                  tuple(float(v) for v in args.at.split(",")), args.target, args.scale,
+                                  clean=args.clean)
         else:
             result = getattr(control, args.action)(args.job_id)
         print(json.dumps(result, ensure_ascii=False))

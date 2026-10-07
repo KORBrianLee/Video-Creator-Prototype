@@ -77,5 +77,34 @@ class ComposeKeyframeTests(unittest.TestCase):
                 self.assertEqual(image.getpixel((190, 50)), (0, 0, 255))
 
 
+class PasteRegionTests(unittest.TestCase):
+    def test_region_lands_at_the_requested_position(self):
+        from PIL import Image, ImageDraw
+        with tempfile.TemporaryDirectory() as temp:
+            source, base, target = (Path(temp) / name for name in ("s.png", "b.png", "t.png"))
+            image = Image.new("RGB", (200, 100), (0, 0, 0))
+            ImageDraw.Draw(image).rectangle((20, 20, 59, 79), fill=(255, 255, 0))
+            image.save(source)
+            Image.new("RGB", (200, 100), (0, 0, 255)).save(base)
+            frame_pick.paste_region(source, (0.1, 0.2, 0.3, 0.8), base, (0.6, 0.2), target, feather=2)
+            with Image.open(target) as result:
+                self.assertEqual(result.getpixel((140, 50)), (255, 255, 0))
+                self.assertEqual(result.getpixel((40, 50)), (0, 0, 255))
+
+    def test_clean_plate_keeps_the_surroundings_out(self):
+        from PIL import Image, ImageDraw
+        with tempfile.TemporaryDirectory() as temp:
+            source, clean, base, target = (Path(temp) / n for n in ("s.png", "c.png", "b.png", "t.png"))
+            Image.new("RGB", (200, 100), (0, 200, 0)).save(clean)
+            image = Image.new("RGB", (200, 100), (0, 200, 0))
+            ImageDraw.Draw(image).rectangle((30, 30, 49, 69), fill=(255, 255, 0))
+            image.save(source)
+            Image.new("RGB", (200, 100), (0, 0, 255)).save(base)
+            frame_pick.paste_region(source, (0.1, 0.2, 0.35, 0.8), base, (0.6, 0.2), target, feather=2, clean=clean)
+            with Image.open(target) as result:
+                self.assertEqual(result.getpixel((145, 50)), (255, 255, 0))
+                self.assertEqual(result.getpixel((124, 30)), (0, 0, 255))
+
+
 if __name__ == "__main__":
     unittest.main()

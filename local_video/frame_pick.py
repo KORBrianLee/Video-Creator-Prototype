@@ -115,6 +115,38 @@ def compose_keyframe(start, end, keep, target, feather=24):
         return {"path": str(target), "sha256": hashlib.file_digest(stream, "sha256").hexdigest()}
 
 
+def paste_region(source, box, base, at, target, scale=1.0, feather=6, clean=None, threshold=28):
+    """Place a person or object cut from `source` (box in 0-1 units) onto `base` with its top-left
+    corner at `at` (0-1 units), optionally scaled. Image editing models cannot move a person to a
+    stated position reliably; pasting the same pixels keeps identity and gives exact placement.
+    `base` should be a clean plate (the scene without that person) to avoid a double. With `clean`
+    (the source scene without the person) only pixels that differ from it are pasted, so the
+    person's surroundings do not come along as a rectangle."""
+    from PIL import Image, ImageChops, ImageFilter
+    with Image.open(source) as src, Image.open(base) as plate:
+        src, plate = src.convert("RGB"), plate.convert("RGB").resize(src.size, Image.LANCZOS)
+        width, height = src.size
+        x0, y0, x1, y1 = (round(box[0] * width), round(box[1] * height), round(box[2] * width), round(box[3] * height))
+        patch = src.crop((x0, y0, x1, y1))
+        mask = Image.new("L", patch.size, 0)
+        inner = Image.new("L", (max(1, patch.width - 2 * feather), max(1, patch.height - 2 * feather)), 255)
+        mask.paste(inner, (feather, feather))
+        mask = mask.filter(ImageFilter.GaussianBlur(feather / 2))
+        if clean is not None:
+            with Image.open(clean) as empty:
+                empty = empty.convert("RGB").resize(src.size, Image.LANCZOS).crop((x0, y0, x1, y1))
+            shape = ImageChops.difference(patch, empty).convert("L").point(lambda v: 255 if v > threshold else 0)
+            shape = shape.filter(ImageFilter.MaxFilter(5)).filter(ImageFilter.GaussianBlur(1.5))
+            mask = ImageChops.multiply(mask, shape)
+        if scale != 1.0:
+            size = (max(1, round(patch.width * scale)), max(1, round(patch.height * scale)))
+            patch, mask = patch.resize(size, Image.LANCZOS), mask.resize(size, Image.LANCZOS)
+        plate.paste(patch, (round(at[0] * width), round(at[1] * height)), mask)
+        plate.save(target)
+    with Path(target).open("rb") as stream:
+        return {"path": str(target), "sha256": hashlib.file_digest(stream, "sha256").hexdigest()}
+
+
 def main(spec_file):
     from . import control, neodragon
     spec = json.loads(Path(spec_file).read_text(encoding="utf-8"))
