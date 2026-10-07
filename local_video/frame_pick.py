@@ -64,6 +64,37 @@ def pick(spec, control, neodragon, report_dir, clock=time.monotonic):
     return summary
 
 
+IMPORT_SIZE = (1024, 640)  # 16:10, the LTX 512x320 / 768x448 family; stages resize from here
+
+
+def import_frames(sources, root, size=IMPORT_SIZE):
+    """Move images made outside the runtime (e.g. Cursor's GenerateImage, which saves on C) into
+    <runtime>/assets/first-frames, centre-cropped to the video aspect; the originals are deleted so
+    nothing stays on the system drive. Returns the D-side paths to use as scene image_path."""
+    from PIL import Image
+    target_dir = Path(root) / "assets" / "first-frames"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    imported = []
+    for source in map(Path, sources):
+        with Image.open(source) as image:
+            image = image.convert("RGB")
+            ratio = size[0] / size[1]
+            width, height = image.size
+            if width / height > ratio:
+                crop = round(height * ratio)
+                box = ((width - crop) // 2, 0, (width - crop) // 2 + crop, height)
+            else:
+                crop = round(width / ratio)
+                box = (0, (height - crop) // 2, width, (height - crop) // 2 + crop)
+            target = target_dir / (source.stem + ".png")
+            image.crop(box).resize(size, Image.LANCZOS).save(target)
+        with target.open("rb") as stream:
+            digest = hashlib.file_digest(stream, "sha256").hexdigest()
+        source.unlink()
+        imported.append({"path": str(target), "sha256": digest, "size": list(size)})
+    return {"imported": imported}
+
+
 def main(spec_file):
     from . import control, neodragon
     spec = json.loads(Path(spec_file).read_text(encoding="utf-8"))

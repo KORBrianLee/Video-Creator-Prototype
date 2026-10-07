@@ -48,5 +48,21 @@ class FramePickTests(unittest.TestCase):
             frame_pick.pick({"prompt": "x", "seeds": []}, FakeControl(Path(temp)), FakeNeo(), Path(temp) / "r")
 
 
+class ImportFramesTests(unittest.TestCase):
+    def test_moves_and_crops_to_video_aspect_then_deletes_the_original(self):
+        from PIL import Image
+        with tempfile.TemporaryDirectory() as temp:
+            outside, root = Path(temp) / "outside", Path(temp) / "runtime"
+            outside.mkdir()
+            source = outside / "frame.jpg"
+            Image.new("RGB", (1024, 576), (10, 20, 30)).save(source)
+            result = frame_pick.import_frames([source], root, size=(160, 100))["imported"][0]
+            self.assertFalse(source.exists())
+            target = Path(result["path"])
+            self.assertEqual(target.parent, root / "assets" / "first-frames")
+            with Image.open(target) as image:
+                self.assertEqual(image.size, (160, 100))
+
+
 if __name__ == "__main__":
     unittest.main()

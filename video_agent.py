@@ -29,6 +29,8 @@ def main():
     plan.add_argument("plan_file", type=Path)
     frames = sub.add_parser("frames", help="한 장면의 첫 프레임 후보를 시드별로 만들고 비교 이미지 하나로 묶기")
     frames.add_argument("spec_file", type=Path)
+    imports = sub.add_parser("import", help="외부에서 만든 첫 프레임(예: GenerateImage, C 저장)을 실행 폴더로 옮기고 원본 삭제")
+    imports.add_argument("images", type=Path, nargs="+")
     args = parser.parse_args()
     try:
         from local_video.storage import cache_environment
@@ -56,6 +58,9 @@ def main():
         elif args.action == "frames":
             from local_video.frame_pick import main as pick_frames
             result = pick_frames(args.spec_file)
+        elif args.action == "import":
+            from local_video.frame_pick import import_frames
+            result = import_frames(args.images, control.load_config()[1])
         else:
             result = getattr(control, args.action)(args.job_id)
         print(json.dumps(result, ensure_ascii=False))
