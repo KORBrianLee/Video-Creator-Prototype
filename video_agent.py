@@ -44,6 +44,9 @@ def main():
     paste.add_argument("--at", required=True, help="x,y (0~1) 붙일 왼쪽 위 위치")
     paste.add_argument("--scale", type=float, default=1.0)
     paste.add_argument("--clean", type=Path, help="source에서 사람을 지운 배경판(사람 모양만 오려 붙이기)")
+    paste.add_argument("--threshold", type=int, default=28, help="배경판과의 차이 기준(배경까지 붙으면 높인다)")
+    paste.add_argument("--ppe", action="store_true", help="보호구 색(주황 조끼·흰 헬멧·짙은 작업복)으로 작업자 모양 찾기")
+    paste.add_argument("--solid", type=float, help="0~1: 이 높이 아래 실루엣 안쪽 구멍을 가로줄 단위로 채우기(손을 든 경우 0.4)")
     args = parser.parse_args()
     try:
         from local_video.storage import cache_environment
@@ -82,7 +85,8 @@ def main():
             from local_video.frame_pick import paste_region
             result = paste_region(args.source, tuple(float(v) for v in args.box.split(",")), args.base,
                                   tuple(float(v) for v in args.at.split(",")), args.target, args.scale,
-                                  clean=args.clean)
+                                  clean=args.clean, threshold=args.threshold,
+                                  solid=args.solid if args.solid is not None else False, ppe=args.ppe)
         else:
             result = getattr(control, args.action)(args.job_id)
         print(json.dumps(result, ensure_ascii=False))

@@ -115,7 +115,44 @@ def compose_keyframe(start, end, keep, target, feather=24):
         return {"path": str(target), "sha256": hashlib.file_digest(stream, "sha256").hexdigest()}
 
 
-def paste_region(source, box, base, at, target, scale=1.0, feather=6, clean=None, threshold=28):
+def fill_rows(mask, start=0.0):
+    """Close holes in an upright figure: each row from `start` (0-1 of the height) down is filled
+    between its first and last set pixel. Dark clothing over dark ground leaves gaps in a difference
+    mask, and a see-through figure in a keyframe turns into a smear in the video. Rows above `start`
+    are left alone so the gap between a raised arm and the head is not filled with background."""
+    width, height = mask.size
+    pixels = mask.load()
+    for y in range(round(start * height), height):
+        row = [x for x in range(width) if pixels[x, y] > 127]
+        if row:
+            for x in range(row[0], row[-1] + 1):
+                pixels[x, y] = 255
+    return mask
+
+
+def ppe_mask(patch):
+    """Silhouette of a worker in high-visibility PPE without a clean plate: saturated orange or
+    yellow vest, bright white helmet and dark work clothes, against grey sky, buildings, gravel and
+    grass. A generated clean plate never matches the real background pixel for pixel, so a
+    difference mask also picks up building edges around the worker."""
+    from PIL import Image
+    hsv = patch.convert("HSV")
+    gray = patch.convert("L")
+    mask = Image.new("L", patch.size, 0)
+    out, h, g = mask.load(), hsv.load(), gray.load()
+    for y in range(patch.height):
+        for x in range(patch.width):
+            hue, sat, val = h[x, y]
+            vest = sat > 120 and val > 110 and (hue < 45 or hue > 240)
+            helmet = g[x, y] > 225 and sat < 40
+            clothes = g[x, y] < 55
+            if vest or helmet or clothes:
+                out[x, y] = 255
+    return mask
+
+
+def paste_region(source, box, base, at, target, scale=1.0, feather=6, clean=None, threshold=28, solid=False,
+                 ppe=False):
     """Place a person or object cut from `source` (box in 0-1 units) onto `base` with its top-left
     corner at `at` (0-1 units), optionally scaled. Image editing models cannot move a person to a
     stated position reliably; pasting the same pixels keeps identity and gives exact placement.
@@ -132,11 +169,17 @@ def paste_region(source, box, base, at, target, scale=1.0, feather=6, clean=None
         inner = Image.new("L", (max(1, patch.width - 2 * feather), max(1, patch.height - 2 * feather)), 255)
         mask.paste(inner, (feather, feather))
         mask = mask.filter(ImageFilter.GaussianBlur(feather / 2))
-        if clean is not None:
-            with Image.open(clean) as empty:
-                empty = empty.convert("RGB").resize(src.size, Image.LANCZOS).crop((x0, y0, x1, y1))
-            shape = ImageChops.difference(patch, empty).convert("L").point(lambda v: 255 if v > threshold else 0)
-            shape = shape.filter(ImageFilter.MaxFilter(5)).filter(ImageFilter.GaussianBlur(1.5))
+        if clean is not None or ppe:
+            if ppe:
+                shape = ppe_mask(patch).filter(ImageFilter.MaxFilter(3))
+            else:
+                with Image.open(clean) as empty:
+                    empty = empty.convert("RGB").resize(src.size, Image.LANCZOS).crop((x0, y0, x1, y1))
+                shape = ImageChops.difference(patch, empty).convert("L").point(lambda v: 255 if v > threshold else 0)
+                shape = shape.filter(ImageFilter.MaxFilter(5))
+            if solid is not False and solid is not None:
+                shape = fill_rows(shape, 0.0 if solid is True else float(solid))
+            shape = shape.filter(ImageFilter.GaussianBlur(1.5))
             mask = ImageChops.multiply(mask, shape)
         if scale != 1.0:
             size = (max(1, round(patch.width * scale)), max(1, round(patch.height * scale)))

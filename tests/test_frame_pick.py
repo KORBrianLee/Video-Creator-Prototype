@@ -77,6 +77,28 @@ class ComposeKeyframeTests(unittest.TestCase):
                 self.assertEqual(image.getpixel((190, 50)), (0, 0, 255))
 
 
+class PpeMaskTests(unittest.TestCase):
+    def test_vest_helmet_and_dark_clothes_are_kept_grey_background_is_not(self):
+        from PIL import Image
+        patch = Image.new("RGB", (4, 1), (150, 150, 150))
+        patch.putpixel((0, 0), (255, 110, 20))
+        patch.putpixel((1, 0), (245, 245, 245))
+        patch.putpixel((2, 0), (25, 28, 40))
+        mask = frame_pick.ppe_mask(patch)
+        self.assertEqual([mask.getpixel((x, 0)) for x in range(4)], [255, 255, 255, 0])
+
+
+class FillRowsTests(unittest.TestCase):
+    def test_gaps_inside_each_row_are_closed(self):
+        from PIL import Image
+        mask = Image.new("L", (10, 2), 0)
+        for x in (2, 7):
+            mask.putpixel((x, 0), 255)
+        frame_pick.fill_rows(mask)
+        self.assertEqual([mask.getpixel((x, 0)) for x in range(10)], [0, 0] + [255] * 6 + [0, 0])
+        self.assertEqual(mask.getpixel((5, 1)), 0)
+
+
 class PasteRegionTests(unittest.TestCase):
     def test_region_lands_at_the_requested_position(self):
         from PIL import Image, ImageDraw
