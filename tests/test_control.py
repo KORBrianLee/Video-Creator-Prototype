@@ -143,6 +143,17 @@ class ControllerTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 control.normalize({**self.request, "anchor_end": bad})
 
+    def test_anchor_end_image_needs_anchor_and_a_runtime_path(self):
+        image = self.root / "end.png"
+        image.write_bytes(b"png")
+        result = control.normalize({**self.request, "anchor_end": 0.8, "anchor_end_image": str(image)})
+        self.assertEqual(result["anchor_end_image"]["path"], str(image.resolve()))
+        self.assertEqual(len(result["anchor_end_image"]["sha256"]), 64)
+        with self.assertRaises(ValueError):
+            control.normalize({**self.request, "anchor_end_image": str(image)})
+        with self.assertRaises(ValueError):
+            control.normalize({**self.request, "anchor_end": 0.8, "anchor_end_image": "relative.png"})
+
     def test_normalize_rejects_invalid_inputs_and_scene_path_escape(self):
         cases = [None, [], {**self.request, "seed": True}, {**self.request, "seed": -1},
                  {**self.request, "preset": "unknown"}, {**self.request, "scenes": []},

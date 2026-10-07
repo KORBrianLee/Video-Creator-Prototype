@@ -95,6 +95,26 @@ def import_frames(sources, root, size=IMPORT_SIZE):
     return {"imported": imported}
 
 
+def compose_keyframe(start, end, keep, target, feather=24):
+    """End keyframe whose static parts are pixel-identical to the start frame.
+
+    Image editing models redraw the whole frame, so a person or a background that should not move
+    shifts slightly, and the video model turns that shift into a camera move. `keep` is a list of
+    (x0, y0, x1, y1) boxes in 0-1 units copied from `start` onto `end` with a soft edge."""
+    from PIL import Image, ImageDraw, ImageFilter
+    with Image.open(start) as first, Image.open(end) as last:
+        first, last = first.convert("RGB"), last.convert("RGB").resize(first.size, Image.LANCZOS)
+        mask = Image.new("L", first.size, 0)
+        draw = ImageDraw.Draw(mask)
+        width, height = first.size
+        for x0, y0, x1, y1 in keep:
+            draw.rectangle((round(x0 * width), round(y0 * height), round(x1 * width), round(y1 * height)), fill=255)
+        mask = mask.filter(ImageFilter.GaussianBlur(feather))
+        Image.composite(first, last, mask).save(target)
+    with Path(target).open("rb") as stream:
+        return {"path": str(target), "sha256": hashlib.file_digest(stream, "sha256").hexdigest()}
+
+
 def main(spec_file):
     from . import control, neodragon
     spec = json.loads(Path(spec_file).read_text(encoding="utf-8"))

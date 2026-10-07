@@ -38,6 +38,22 @@ class LtxStageTests(unittest.TestCase):
         self.assertEqual((cos.device.type, sin.device.type), ("meta", "meta"))
 
 
+@unittest.skipUnless(HAS_TORCH and importlib.util.find_spec("diffusers") is not None, "video runtime only")
+class CpuDecodedTilesTests(unittest.TestCase):
+    def test_each_tile_leaves_the_gpu_as_soon_as_it_is_decoded(self):
+        import torch
+        from diffusers.models.autoencoders.vae import DecoderOutput
+        from local_video.ltx_stage import cpu_decoded_tiles
+
+        class Vae:
+            def tiled_decode(self, z, temb, return_dict=True):
+                return DecoderOutput(sample=torch.zeros(1, 3, 2, 4, 4, device="meta"))
+
+        vae = cpu_decoded_tiles(Vae(), torch)
+        with self.assertRaises(NotImplementedError):
+            vae.tiled_decode(None, None)  # meta tensors cannot be copied: proves the move to CPU happens
+
+
 @unittest.skipUnless(HAS_TORCH, "torch is only in the video runtime")
 class CpuSchedulerStepTests(unittest.TestCase):
     def test_per_token_step_runs_on_cpu_and_returns_to_the_sample_device(self):

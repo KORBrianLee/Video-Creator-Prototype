@@ -490,6 +490,10 @@ def generate_project(request, output_dir, cache_dir, model_dir, progress, is_can
         long_video = ltx.settings_for(duration, request.get("preset", "preview"))
         if request.get("anchor_end"):
             long_video["anchor_end"] = float(request["anchor_end"])
+            if request.get("anchor_end_image"):
+                long_video["anchor_end_image"] = request["anchor_end_image"]
+            if request.get("cond_noise") is not None:
+                long_video["image_cond_noise_scale"] = float(request["cond_noise"])
     if long_video:
         settings = {**settings, **{key: long_video[key] for key in ("width", "height", "frames", "fps")}}
     shots = []

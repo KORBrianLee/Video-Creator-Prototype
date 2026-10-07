@@ -64,5 +64,18 @@ class ImportFramesTests(unittest.TestCase):
                 self.assertEqual(image.size, (160, 100))
 
 
+class ComposeKeyframeTests(unittest.TestCase):
+    def test_kept_region_comes_from_the_start_frame(self):
+        from PIL import Image
+        with tempfile.TemporaryDirectory() as temp:
+            start, end, target = (Path(temp) / name for name in ("s.png", "e.png", "t.png"))
+            Image.new("RGB", (200, 100), (255, 0, 0)).save(start)
+            Image.new("RGB", (200, 100), (0, 0, 255)).save(end)
+            frame_pick.compose_keyframe(start, end, [(0, 0, 0.4, 1)], target, feather=2)
+            with Image.open(target) as image:
+                self.assertEqual(image.getpixel((10, 50)), (255, 0, 0))
+                self.assertEqual(image.getpixel((190, 50)), (0, 0, 255))
+
+
 if __name__ == "__main__":
     unittest.main()

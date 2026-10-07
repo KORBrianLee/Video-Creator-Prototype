@@ -138,6 +138,25 @@ def cpu_scheduler_step(scheduler):
     return scheduler
 
 
+def cpu_decoded_tiles(vae, torch):
+    """Each decoded time tile goes to the CPU at once, so blending, concatenation and post-processing
+    never hold the whole clip on the GPU (15 s at 512x320 is about 700 MB in FP32, which ended in
+    UR_RESULT_ERROR_DEVICE_LOST on Iris Xe shared memory)."""
+    from diffusers.models.autoencoders.vae import DecoderOutput
+    tiled_decode = vae.tiled_decode
+
+    def decode(z, temb, return_dict=True):
+        sample = tiled_decode(z, temb, return_dict=True).sample
+        module = getattr(torch, sample.device.type, None)
+        sample = sample.cpu()
+        if module is not None and hasattr(module, "empty_cache"):
+            module.empty_cache()
+        return DecoderOutput(sample=sample) if return_dict else (sample,)
+
+    vae.tiled_decode = decode
+    return vae
+
+
 def open_gpu(root, plan):
     backend = plan.get("torch_device")
     if backend not in accelerator.BACKENDS or not accelerator.enable(root, backend):
@@ -234,6 +253,7 @@ def render(torch, device, root, first_frame, settings, prompt_embeds, mask, seed
         vae.enable_tiling(tile_sample_min_height=256, tile_sample_min_width=256, tile_sample_min_num_frames=16,
                           tile_sample_stride_height=192, tile_sample_stride_width=192, tile_sample_stride_num_frames=8)
         vae.use_framewise_decoding = True
+        cpu_decoded_tiles(vae, torch)
     scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(configs / "scheduler", local_files_only=True)
     fixed_schedule(scheduler, settings["timesteps"], torch)
     image = Image.open(first_frame).convert("RGB").resize((settings["width"], settings["height"]))
@@ -246,8 +266,16 @@ def render(torch, device, root, first_frame, settings, prompt_embeds, mask, seed
         pipe = LTXConditionPipeline(scheduler=scheduler, vae=vae, text_encoder=None, tokenizer=None, transformer=transformer)
         cpu_video_coords(pipe)
         last = (settings["frames"] - 1) // 8 * 8
+        end = image
+        if settings.get("anchor_end_image"):
+            import hashlib
+            end_path = Path(settings["anchor_end_image"]["path"])
+            if hashlib.sha256(end_path.read_bytes()).hexdigest() != settings["anchor_end_image"]["sha256"]:
+                raise RuntimeError("anchor_end_image changed after the request")
+            end = Image.open(end_path).convert("RGB").resize((settings["width"], settings["height"]))
         inputs = {"conditions": [LTXVideoCondition(image=image, frame_index=0, strength=1.0),
-                                 LTXVideoCondition(image=image, frame_index=last, strength=float(anchor))]}
+                                 LTXVideoCondition(image=end, frame_index=last, strength=float(anchor))],
+                  "image_cond_noise_scale": float(settings.get("image_cond_noise_scale", 0.15))}
     else:
         pipe = LTXImageToVideoPipeline(scheduler=scheduler, vae=vae, text_encoder=None, tokenizer=None, transformer=transformer)
         inputs = {"image": image}

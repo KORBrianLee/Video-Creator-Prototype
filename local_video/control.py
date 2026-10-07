@@ -446,6 +446,18 @@ def normalize(value):
     anchor_end = value.get("anchor_end")
     if anchor_end is not None and (isinstance(anchor_end, bool) or not isinstance(anchor_end, (int, float)) or not 0 < anchor_end <= 1):
         raise ValueError("anchor_end는 0보다 크고 1 이하인 수입니다(마지막 프레임을 첫 화면 구도에 묶는 강도).")
+    cond_noise = value.get("cond_noise")
+    if cond_noise is not None and (isinstance(cond_noise, bool) or not isinstance(cond_noise, (int, float)) or not 0 <= cond_noise <= 1):
+        raise ValueError("cond_noise는 0~1 사이 수입니다(키프레임 조건에 섞는 노이즈, 기본 0.15).")
+    anchor_end_image = None
+    if value.get("anchor_end_image"):
+        _, image_root = load_config()
+        end_image = Path(value["anchor_end_image"])
+        if anchor_end is None or not end_image.is_absolute() or not end_image.resolve().is_relative_to(image_root):
+            raise ValueError("anchor_end_image는 anchor_end와 함께, 실행 폴더 안의 절대 경로로 지정합니다.")
+        end_image = end_image.resolve(strict=True)
+        with end_image.open("rb") as stream:
+            anchor_end_image = {"path": str(end_image), "sha256": hashlib.file_digest(stream, "sha256").hexdigest()}
     diagnostic = value.get("diagnostic", False)
     if not isinstance(diagnostic, bool):
         raise ValueError("diagnostic은 true 또는 false여야 합니다.")
@@ -469,6 +481,8 @@ def normalize(value):
             "diagnostic": diagnostic,
             "video_model": video_model,
             **({"anchor_end": float(anchor_end)} if anchor_end is not None else {}),
+            **({"anchor_end_image": anchor_end_image} if anchor_end_image else {}),
+            **({"cond_noise": float(cond_noise)} if cond_noise is not None else {}),
             "model_profile": profile, "_model_spec": spec,
             "model_revision": hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest(),
             "backend": backend, "device_plan": selected, "threads": cfg["threads"],

@@ -31,6 +31,11 @@ def main():
     frames.add_argument("spec_file", type=Path)
     imports = sub.add_parser("import", help="외부에서 만든 첫 프레임(예: GenerateImage, C 저장)을 실행 폴더로 옮기고 원본 삭제")
     imports.add_argument("images", type=Path, nargs="+")
+    compose = sub.add_parser("compose-end", help="끝 키프레임의 고정 영역을 시작 프레임에서 복사(카메라 흔들림 방지)")
+    compose.add_argument("start", type=Path)
+    compose.add_argument("end", type=Path)
+    compose.add_argument("target", type=Path)
+    compose.add_argument("--keep", action="append", required=True, help="x0,y0,x1,y1 (0~1), 여러 번 지정 가능")
     args = parser.parse_args()
     try:
         from local_video.storage import cache_environment
@@ -61,6 +66,10 @@ def main():
         elif args.action == "import":
             from local_video.frame_pick import import_frames
             result = import_frames(args.images, control.load_config()[1])
+        elif args.action == "compose-end":
+            from local_video.frame_pick import compose_keyframe
+            boxes = [tuple(float(v) for v in box.split(",")) for box in args.keep]
+            result = compose_keyframe(args.start, args.end, boxes, args.target)
         else:
             result = getattr(control, args.action)(args.job_id)
         print(json.dumps(result, ensure_ascii=False))
