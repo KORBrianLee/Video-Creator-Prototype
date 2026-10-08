@@ -63,7 +63,10 @@ SUMMARY (for users worldwide; the full terms below are binding)
        License의 Attachment A, CreativeML Open RAIL-M의 Attachment A, Qualcomm Responsible
        AI License, Skywork Community License 등)의 이용 제한은 이 라이선스의 일부로서
        사용자를 구속한다. 그 이용 제한을 어기는 사용은 이 라이선스 위반이다. 모델 라이선스
-       원문은 docs/licenses/에 있다.
+       원문은 docs/licenses/에 있다. 이 라이선스를 구입하거나 허락을 받아도 모델의 사용권은
+       포함되지 않는다. 특히 연매출 미화 1,000만 달러 이상인 조직이 LTX-Video를 상업적으로
+       사용하려면 Lightricks의 별도 상업 라이선스(LTX-Video Open Weights License 2조)가
+       필요하다.
    (c) 예시 자료: examples/ 등에 포함된 제삼자 자료와 그 변형물(예: CC BY 참고 프레임으로
        만든 예시 영상)은 해당 자료의 라이선스와 출처 표시(…-ATTRIBUTION.md)를 따르며,
        이 라이선스는 원 저작자의 출처 표시나 그 라이선스가 보장하는 권리를 제한하지 않는다.
@@ -138,8 +141,11 @@ differently, the reading that better protects the copyright holder applies)
    comply with the stricter terms. (b) The use-based restrictions of every model the Software
    downloads or runs (Attachment A of the LTX-Video Open Weights License, Attachment A of the
    CreativeML Open RAIL-M, the Qualcomm Responsible AI License, the Skywork Community License
-   and the like) are part of this license and bind the user; a use that violates them breaches
-   this license. (c) Third-party material in examples/ and its adaptations (for example a
+   and the like) are part of    this license and bind the user; a use that violates them breaches
+   this license. A purchased license or permission under this license does not include any
+   model license; in particular, organisations with annual revenues of USD 10,000,000 or more
+   need a separate commercial license from Lightricks for commercial use of LTX-Video
+   (LTX-Video Open Weights License, section 2). (c) Third-party material in examples/ and its adaptations (for example a
    sample video conditioned on a CC BY reference frame) follows that material's license and
    attribution file (…-ATTRIBUTION.md); this license does not limit the original author's
    attribution or the rights their license guarantees.

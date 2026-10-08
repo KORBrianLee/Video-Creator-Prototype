@@ -380,12 +380,17 @@ def _infer(command: list[str], work: Path, request: dict, progress: Callable,
             "peak_working_set_gib": round(peak/2**30, 3), "inference_log_path": str(log_path), **monitor.summary()}
 
 
+# Model licenses (LTX-Video and Open RAIL-M Attachment A (e)) require disclosing that shared output is machine generated.
+AI_NOTICE = "AI-generated (machine generated) video. Not real footage."
+
+
 def _writer(path: Path, settings: dict):
     import imageio_ffmpeg
     return imageio_ffmpeg.write_frames(str(path), (settings["width"], settings["height"]),
         fps=settings["fps"], codec="libx264", pix_fmt_in="rgb24", pix_fmt_out="yuv420p",
         macro_block_size=1, ffmpeg_log_level="error", ffmpeg_timeout=5,
-        output_params=["-threads", "2", "-crf", "18", "-preset", "veryfast", "-movflags", "+faststart"])
+        output_params=["-threads", "2", "-crf", "18", "-preset", "veryfast", "-movflags", "+faststart",
+                       "-metadata", f"comment={AI_NOTICE}", "-metadata", "description=" + AI_NOTICE])
 
 
 def _encode_frames(work: Path, video: Path, settings: dict, is_cancelled: Callable) -> None:

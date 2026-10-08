@@ -45,6 +45,12 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(result["duration_seconds"], 1.0)
         self.assertGreater(result["mean_adjacent_frame_luma_difference"], 0.02)
 
+    def test_encoded_clip_declares_it_is_machine_generated(self):
+        import imageio_ffmpeg
+        probe = subprocess.run([imageio_ffmpeg.get_ffmpeg_exe(), "-hide_banner", "-i", str(self.frames())],
+                               capture_output=True, text=True, encoding="utf-8", errors="replace")
+        self.assertIn(backend.AI_NOTICE, probe.stderr)
+
     def test_static_clip_is_rejected(self):
         with self.assertRaisesRegex(RuntimeError, "프레임 변화"):
             backend.verify_video(self.frames(static=True), self.settings)

@@ -6,9 +6,10 @@
 
 | 구성 | 적용 조건 |
 |---|---|
-| LTX-Video 가중치 | [LTX-Video Open Weights License](licenses/LTX-Video-Open-Weights-License-0.X.txt). 무상·비독점 사용권. 재배포하거나 원격 서비스로 제공할 때 이 원문을 함께 주고(3.2), 변경한 파일에 변경 고지를 하며(3.3), Attachment A의 이용 제한을 사용·배포 계약에 강제 조항으로 넣어야 한다(3.1). 프로젝트 LICENSE 5(b)가 이 이용 제한을 사용자에게 적용한다. 생성 결과물에 대해 라이선스 제공자는 권리를 주장하지 않지만(5), 결과물과 그 사용의 책임은 사용자에게 있다. 우리가 보관한 0.X 원문에는 매출 상한 조항이 없다. |
+| LTX-Video 가중치 | [LTX-Video Open Weights License](licenses/LTX-Video-Open-Weights-License-0.X.txt). 무상·비독점 사용권. 재배포하거나 원격 서비스로 제공할 때 이 원문을 함께 주고(3.2), 변경한 파일에 변경 고지를 하며(3.3), Attachment A의 이용 제한을 사용·배포 계약에 강제 조항으로 넣어야 한다(3.1). 프로젝트 LICENSE 5(b)가 이 이용 제한을 사용자에게 적용한다. 생성 결과물에 대해 라이선스 제공자는 권리를 주장하지 않지만(5), 결과물과 그 사용의 책임은 사용자에게 있다. 연매출 미화 1,000만 달러 이상인 조직(Commercial Entities)이 상업적으로 사용하려면 Lightricks의 별도 유료 상업 라이선스가 필요하며, 이를 어기면 사용 기간의 라이선스 요금과 그 두 배의 위약금이 청구될 수 있다(2). 개인 학습과 그 미만 조직의 사용은 무상이다. 프로젝트 LICENSE를 구입해도 이 모델 사용권은 포함되지 않는다(LICENSE 5(b)). |
 | T5 텍스트 인코더 | LTX 저장소에 함께 있는 Google T5 v1.1 XXL 인코더, Apache-2.0. 설치 시 BF16으로 변환해 로컬에만 둔다(재배포하지 않음). |
 | 실행 방식 | 설치기가 고정 revision·해시로 공식 저장소에서 직접 내려받는다. 이 저장소는 가중치를 포함하거나 재배포하지 않는다. 프로젝트 코드는 diffusers·transformers의 공개 API를 호출하고 일부 메서드를 실행 중에 감쌀 뿐, 그 소스 코드를 복사해 넣지 않는다. |
+| AI 생성 표시 | Attachment A (e)는 생성 결과물을 공개·배포할 때 기계가 생성했다는 사실을 분명히 밝히도록 요구한다. 모든 결과 영상의 MP4 메타데이터(comment, description)에 "AI-generated (machine generated) video. Not real footage."를 기록한다. 영상을 게시·공유할 때는 화면이나 설명에도 AI 생성 영상임을 함께 밝혀야 한다. |
 | 첫 프레임 | Cursor 내장 이미지 생성(GenerateImage) 결과는 사용자 실행 폴더(D)에만 두며 저장소에 넣지 않는다. 실존 인물·상표·로고·실제 현장 표시를 요청하지 않는다. |
 | SkyReels-V2(NVIDIA 전용) | [Skywork Community License](licenses/SkyReels-V2-Skywork-LICENSE.txt). 그 조건과 이용 제한을 함께 따른다. |
 
