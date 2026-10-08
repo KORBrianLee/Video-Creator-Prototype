@@ -135,9 +135,11 @@ LONG_VIDEO_TIERS = ("skyreels", "ltx")
 
 
 def model_tier(root, backend, discrete, total_memory_bytes, installed=None, ltx_installed=None):
-    """Video model for this computer: 'skyreels' (NVIDIA, VRAM >= 8 GB), 'ltx' (Intel XPU or CUDA), else 'neo'.
+    """Video model for this computer: 'skyreels' (NVIDIA, VRAM >= 8 GB), else 'neo'.
 
-    SkyReels and LTX make 15s clips in one generation; Neo is limited to 8s (it degrades after about 7s).
+    LTX is never chosen automatically: its license requires organisations with annual revenue of USD 10M or
+    more to buy a commercial license, so it runs only when a request names video_model="ltx".
+    SkyReels makes 15s clips in one generation; Neo is limited to 8s (it degrades after about 7s).
     """
     from . import ltx, skyreels
     source = Path(__file__).resolve().parents[1]
@@ -156,8 +158,9 @@ def model_tier(root, backend, discrete, total_memory_bytes, installed=None, ltx_
             ltx_installed = ltx.installed(root, source)
         failed = recently_failed(root, "ltx")
         if ltx_installed and not failed:
-            return "ltx", None
-        reasons.append("ltx_failed_recently: " + failed[:120] if failed else "ltx_not_installed")
+            reasons.append("ltx_opt_in_only: license needs a paid commercial license at USD 10M+ annual revenue")
+        else:
+            reasons.append("ltx_failed_recently: " + failed[:120] if failed else "ltx_not_installed")
     else:
         reasons.append("long_video_model_needs_nvidia_or_intel_gpu")
     return "neo", "; ".join(reasons)

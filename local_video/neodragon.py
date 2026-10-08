@@ -467,7 +467,8 @@ def generate_project(request, output_dir, cache_dir, model_dir, progress, is_can
         selected["model_tier"] = "neo"
     elif wanted != "auto" and wanted != selected["model_tier"]:
         # The one-hour failure block protects automatic choice; an explicit model request is an experiment.
-        if choice.get("torch_backend") and str(choice.get("model_tier_reason", "")).startswith(f"{wanted}_failed_recently"):
+        reason = str(choice.get("model_tier_reason", ""))
+        if choice.get("torch_backend") and (f"{wanted}_failed_recently" in reason or f"{wanted}_opt_in_only" in reason):
             selected["model_tier"] = wanted
         else:
             raise RuntimeError(f"video_model={wanted}을 이 컴퓨터에서 쓸 수 없습니다. 선택 가능: {selected['model_tier']}, neo")
