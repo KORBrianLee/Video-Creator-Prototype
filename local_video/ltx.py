@@ -33,10 +33,14 @@ def vae_tiling(height, decode="lean"):
     decodes every latent frame three times and the 192 px stride adds half again. "lean" decodes frames up to 320 px
     high in one row and steps 16 frames over 24-frame tiles, with the same 64 px and 8-frame blends: on a 15 s
     512x288 clip it decoded in 440 s against 939-1396 s, at the same peak memory and without visible seams at tile
-    edges or stride frames. Taller frames keep the safe tiles."""
+    edges or stride frames. Taller frames (the 1024x576 two-pass output) decode in two rows of 384 px stepped 288 (latent
+    rows 0-12 and 9-18, a 96 px blend) with the same 24-frame tiles: 276 tile decodes for 15 s instead of 828."""
     if decode == "lean" and height <= 320:
         return {"tile_sample_min_height": height, "tile_sample_min_width": 256, "tile_sample_min_num_frames": 24,
                 "tile_sample_stride_height": height, "tile_sample_stride_width": 192, "tile_sample_stride_num_frames": 16}
+    if decode == "lean":
+        return {"tile_sample_min_height": 384, "tile_sample_min_width": 256, "tile_sample_min_num_frames": 24,
+                "tile_sample_stride_height": 288, "tile_sample_stride_width": 192, "tile_sample_stride_num_frames": 16}
     return {"tile_sample_min_height": 256, "tile_sample_min_width": 256, "tile_sample_min_num_frames": 16,
             "tile_sample_stride_height": 192, "tile_sample_stride_width": 192, "tile_sample_stride_num_frames": 8}
 

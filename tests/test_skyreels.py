@@ -182,13 +182,16 @@ class LtxTests(unittest.TestCase):
         self.assertEqual((lean["tile_sample_min_num_frames"], lean["tile_sample_stride_num_frames"]), (24, 16))
         self.assertEqual((latent_frame_decodes(361, safe), latent_frame_decodes(361, lean)), (135, 90))
         self.assertEqual((rows(288, safe), rows(288, lean)), (2, 1))
-        self.assertEqual(ltx.vae_tiling(576, "lean"), safe)  # 1024x576 keeps the small tiles
+        tall, tall_safe = ltx.vae_tiling(576, "lean"), ltx.vae_tiling(576, "safe")
+        self.assertEqual((rows(576, tall_safe), rows(576, tall)), (3, 2))  # 1024x576: two full rows, 96 px blend
+        self.assertEqual(tall["tile_sample_min_height"] - tall["tile_sample_stride_height"], 96)
+        self.assertEqual((latent_frame_decodes(361, tall_safe), latent_frame_decodes(361, tall)), (135, 90))
 
     def test_refine_generates_at_the_preview_size_and_outputs_twice_as_large(self):
         from local_video import ltx
         refined = ltx.settings_for(15, "preview", "16:9", refine=True)
         self.assertEqual((refined["width"], refined["height"], refined["refine"]), (1024, 576, {"width": 512, "height": 288}))
-        self.assertEqual(refined["vae_tiling"], ltx.vae_tiling(576))  # small tiles above 320 px
+        self.assertEqual(refined["vae_tiling"]["tile_sample_min_height"], 384)  # two rows for the 576 px output
         self.assertEqual(ltx.settings_for(15, "quality", "16:9", refine=True)["refine"], {"width": 512, "height": 288})
         self.assertNotIn("refine", ltx.settings_for(15, "preview", "16:9"))
 
