@@ -208,7 +208,9 @@ class BackendTests(unittest.TestCase):
         with mock.patch.object(backend, "_memory", return_value=(20*1024**2, 8*1024**3)):
             with self.assertRaises(InterruptedError):
                 backend._infer([sys.executable, "-c", "import time; time.sleep(60)"], self.work, request, progress.append, cancel, 1, 1, 4)
-        self.assertLess(time.monotonic()-before, 5)
+        # The child sleeps 60 s; a running generation on the same PC stretches the resource checks, spawn and kill
+        # to several seconds, so only "well before the child would end" is a stable proof that it was stopped.
+        self.assertLess(time.monotonic()-before, 30)
         self.assertTrue(progress)
         self.assertIn("engine_pid", progress[0])
 

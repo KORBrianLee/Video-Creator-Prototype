@@ -1,8 +1,10 @@
 import json
 import os
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
+from unittest import mock
 
 from local_video import digest, plan_runner
 
@@ -134,6 +136,28 @@ class MotionSignalTests(unittest.TestCase):
         self.assertLess(crossing["camera_fit"], digest.CAMERA_MOVED_FIT)
         self.assertGreaterEqual(tilting["camera_fit"], digest.CAMERA_MOVED_FIT)
         self.assertEqual(digest.motion_warnings(tilting), [f"camera_moved: fit {tilting['camera_fit']}"])
+
+
+class FreshDigestTests(unittest.TestCase):
+    def test_the_digest_comes_from_a_new_process_running_the_deployed_code(self):
+        calls = []
+        def run(command, **options):
+            calls.append(command)
+            return subprocess.CompletedProcess(command, 0, stdout=b'{"job": "abc", "state": "failed", "error": "x"}\n')
+        self.assertEqual(plan_runner.fresh_digest("abc", run=run), {"job": "abc", "state": "failed", "error": "x"})
+        self.assertEqual(calls[0][-2:], ["digest", "abc"])
+        self.assertTrue(calls[0][1].endswith("video_agent.py"))
+
+    def test_a_tool_error_or_broken_output_falls_back_to_this_process(self):
+        for stdout in [b'{"error": "not found"}\n', b"", b"not json"]:
+            run = lambda command, **options: subprocess.CompletedProcess(command, 1, stdout=stdout)
+            with mock.patch.object(digest, "job_digest", return_value={"job": "abc", "state": "completed"}) as local:
+                self.assertEqual(plan_runner.fresh_digest("abc", run=run)["state"], "completed")
+                local.assert_called_once_with("abc")
+        def hung(command, **options):
+            raise subprocess.TimeoutExpired(command, 600)
+        with mock.patch.object(digest, "job_digest", return_value={"state": "completed"}):
+            self.assertEqual(plan_runner.fresh_digest("abc", run=hung), {"state": "completed"})
 
 
 class LongVideoNotesTests(unittest.TestCase):

@@ -10,8 +10,11 @@ Plan file (JSON):
 """
 from __future__ import annotations
 import json
-import time
+import os
 from pathlib import Path
+import subprocess
+import sys
+import time
 
 SUMMARY_LIMIT = 4096
 TERMINAL = {"completed", "failed", "cancelled"}
@@ -79,10 +82,25 @@ def run_plan(plan, control, digest_job, report_dir, sleep=time.sleep, poll_secon
     return summary
 
 
+def fresh_digest(job_id, run=subprocess.run):
+    """Digest in a new process: a runner going for hours then reports with the code deployed meanwhile (new
+    warnings and measurements), not with what it imported at its start. Falls back to this process's code."""
+    app = Path(__file__).resolve().parent.parent
+    try:
+        done = run([sys.executable, str(app / "video_agent.py"), "digest", job_id], capture_output=True, timeout=600,
+                   creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+        result = json.loads(done.stdout.decode("utf-8").strip().splitlines()[-1])
+        if isinstance(result, dict) and "state" in result:
+            return result
+    except (OSError, ValueError, IndexError, subprocess.SubprocessError):
+        pass
+    from .digest import job_digest
+    return job_digest(job_id)
+
+
 def main(plan_file):
     from . import control
-    from .digest import job_digest
     plan = json.loads(Path(plan_file).read_text(encoding="utf-8"))
     _, root = control.load_config()
     report = root / "reports" / f'{plan.get("name", "plan")}-{time.strftime("%Y%m%d-%H%M%S")}'
-    return run_plan(plan, control, job_digest, report)
+    return run_plan(plan, control, fresh_digest, report)
