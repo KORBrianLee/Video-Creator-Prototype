@@ -15,6 +15,14 @@ class LtxRecordTests(unittest.TestCase):
         self.assertEqual(record, {"load_seconds": 12.0, "denoise_step_seconds": [233.7, 146.0, 150.0],
                                   "decode_seconds": 300.5})
 
+    def test_text_cache_follows_prompt_budget_and_encoder_only(self):
+        from local_video.ltx_stage import text_cache_key
+        key = text_cache_key("a loader stops", 128, Path("models/ltx-video-2b-0.9.8"))
+        self.assertEqual(key, text_cache_key("a loader stops", 128, Path("D:/elsewhere/ltx-video-2b-0.9.8")))
+        self.assertEqual(len({key, text_cache_key("a loader stops", 256, Path("ltx-video-2b-0.9.8")),
+                              text_cache_key("a loader stops.", 128, Path("ltx-video-2b-0.9.8")),
+                              text_cache_key("a loader stops", 128, Path("ltx-video-2b-0.9.9"))}), 4)
+
     def test_a_prompt_longer_than_the_encoder_reads_is_marked(self):
         from local_video.ltx_stage import prompt_record
         self.assertEqual(prompt_record(142, 128), {"tokens": 142, "limit": 128, "truncated": True})

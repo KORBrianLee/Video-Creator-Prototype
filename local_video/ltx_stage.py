@@ -191,14 +191,29 @@ def timing_record(load_start, pipe_start, step_ends, pipe_end):
             "decode_seconds": round(pipe_end - marks[-1], 1)}
 
 
-def encode_text(torch, device, folder, prompt, max_length):
+def text_cache_key(prompt, max_length, folder):
+    """Same prompt, token budget and encoder: same embeddings, whatever the seed or the conditions."""
+    import hashlib
+    value = json.dumps({"prompt": prompt, "max_length": max_length, "encoder": Path(folder).name}, sort_keys=True)
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def encode_text(torch, device, folder, prompt, max_length, cache_dir=None):
     """T5-XXL encoder run once per prompt on the CPU (128 tokens, tens of seconds), then released.
 
     T5's relative-position buckets need integer/bool casts that the Iris Xe driver cannot run, and the
     encoder is used once per clip, so the CPU is the robust place for it. BF16 weights stay mapped and
     each Linear is widened to FP32 per call. Returns FP32 embeddings and mask on the GPU, and the number
-    of tokens the whole prompt needs.
+    of tokens the whole prompt needs. With `cache_dir`, a retry of the same prompt (another seed or
+    keyframe) reads them back instead of loading the 4.7B-parameter encoder again.
     """
+    cached = Path(cache_dir) / f"{text_cache_key(prompt, max_length, folder)}.pt" if cache_dir else None
+    if cached is not None and cached.is_file():
+        try:
+            stored = torch.load(cached)
+            return stored["embeds"].to(device), stored["mask"].to(device), int(stored["needed"])
+        except Exception:  # a cut-off cache file only costs the encoder run below
+            cached.unlink(missing_ok=True)
     from local_video import readonly_weights
     readonly_weights.install(transformers=True)
     from transformers import T5EncoderModel, T5TokenizerFast
@@ -216,6 +231,12 @@ def encode_text(torch, device, folder, prompt, max_length):
         mask = tokens.attention_mask.float()
         embeds = encoder(tokens.input_ids, attention_mask=mask).last_hidden_state.float()
     del encoder
+    if cached is not None:
+        try:
+            cached.parent.mkdir(parents=True, exist_ok=True)
+            torch.save({"embeds": embeds, "mask": mask, "needed": needed}, cached)
+        except OSError:  # the clip does not depend on the cache
+            pass
     # Masks are made FP32 on the CPU: integer-to-float casts on the GPU are what this driver cannot run.
     return embeds.to(device), mask.to(device), needed
 
@@ -228,7 +249,8 @@ def generate(root, output):
     torch.set_num_threads(min(8, max(1, request.get("threads", 4))))
     started = time.monotonic()
     prompt = request["prompt"] + request.get("prompt_modifier", ", cinematic, realistic textures, high detail, natural colours")
-    prompt_embeds, mask, needed = encode_text(torch, device, model_folder(root), prompt, settings["max_sequence_length"])
+    prompt_embeds, mask, needed = encode_text(torch, device, model_folder(root), prompt, settings["max_sequence_length"],
+                                              root / "cache" / "ltx-text")
     text_seconds = time.monotonic() - started
     frames, info = render(torch, device, root, output / "first-frame.png", settings, prompt_embeds, mask,
                           int(request["seed"]), bool(plan.get("torch_discrete")))
