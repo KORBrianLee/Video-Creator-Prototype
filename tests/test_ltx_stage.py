@@ -58,6 +58,24 @@ class LtxRecordTests(unittest.TestCase):
 
 @unittest.skipUnless(HAS_TORCH, "torch is only in the video runtime")
 class LtxStageTests(unittest.TestCase):
+    def test_rope_tables_are_reused_until_the_coordinates_change(self):
+        import torch
+        from types import SimpleNamespace
+        from local_video.ltx_stage import cpu_rope
+        computed = []
+
+        def forward(probe, video_coords=None):
+            computed.append(tuple(video_coords.shape))
+            return video_coords.sum(1, keepdim=True).cos(), video_coords.sum(1, keepdim=True).sin()
+
+        rope = SimpleNamespace(forward=forward)
+        cpu_rope(rope, torch)
+        hidden, coords = torch.zeros(1, 5, 8), torch.rand(1, 3, 100)
+        first = rope.forward(hidden, video_coords=coords)
+        self.assertIs(rope.forward(hidden, video_coords=coords)[0], first[0])
+        self.assertEqual(tuple(rope.forward(hidden, video_coords=torch.rand(1, 3, 400))[0].shape), (1, 1, 400))
+        self.assertEqual(len(computed), 2)
+
     def test_noise_is_drawn_on_the_generator_device_then_moved(self):
         import torch
         from local_video.ltx_stage import generator_side_noise

@@ -62,11 +62,26 @@ def cpu_rope(rope, torch):
             return type(value)(to_cpu(item) for item in value)
         return value
 
+    def identity(value):
+        if isinstance(value, torch.Tensor):
+            return ("tensor", tuple(value.shape), value.device.type, value.data_ptr(), value._version)
+        if isinstance(value, (tuple, list)):
+            return tuple(identity(item) for item in value)
+        return value
+
+    # Every denoising step passes the same token coordinates; the tables only change with a new pipeline call.
+    last = {}
+
     def cpu_forward(hidden_states, *args, **kwargs):
         device = hidden_states.device
+        signature = (hidden_states.shape[0], device.type, identity(args),
+                     tuple(sorted((name, identity(value)) for name, value in kwargs.items())))
+        if last.get("signature") == signature:
+            return last["tables"]
         probe = torch.empty((hidden_states.shape[0], 0), dtype=torch.float32)
-        cos, sin = forward(probe, *to_cpu(args), **{key: to_cpu(value) for key, value in kwargs.items()})
-        return cos.to(device), sin.to(device)
+        cos, sin = forward(probe, *to_cpu(args), **{name: to_cpu(value) for name, value in kwargs.items()})
+        last.update(signature=signature, tables=(cos.to(device), sin.to(device)))
+        return last["tables"]
 
     rope.forward = cpu_forward
     return rope
