@@ -223,6 +223,44 @@ def paste_region(source, box, base, at, target, scale=1.0, feather=6, clean=None
         return {"path": str(target), "sha256": hashlib.file_digest(stream, "sha256").hexdigest()}
 
 
+def move_object(frame, plate, target, boxes, shift, scale=1.0, pivot=None, threshold=32, feather=3):
+    """Move a machine inside a fixed view for a keyframe. Image edits redraw a large vehicle in place instead of
+    moving it, and overshoot small moves, but they remove one well: `plate` is the same view without it. The
+    machine is what differs from the plate inside `boxes` (0-1 units; keep them tight so redrawn background does
+    not travel along). It moves by `shift` (0-1 of width and height) and scales about `pivot` (0-1, default the
+    centre of the boxes; above 1 means closer to the camera). What it uncovers comes from the plate, everything
+    else keeps the frame's own pixels. A machine cut off by the frame edge may only move toward that edge, or its
+    cut shows: for the other direction keep the original as the later keyframe and build the earlier one."""
+    from PIL import Image, ImageChops, ImageDraw, ImageFilter
+    with Image.open(frame) as first, Image.open(plate) as empty:
+        first = first.convert("RGB")
+        empty = empty.convert("RGB").resize(first.size, Image.LANCZOS)
+        width, height = first.size
+        region = Image.new("L", first.size, 0)
+        draw = ImageDraw.Draw(region)
+        corners = []
+        for x0, y0, x1, y1 in boxes:
+            corners.append((x0 * width, y0 * height, x1 * width, y1 * height))
+            draw.rectangle(tuple(round(v) for v in corners[-1]), fill=255)
+        shape = ImageChops.difference(first, empty).convert("L").point(lambda v: 255 if v > threshold else 0)
+        shape = ImageChops.multiply(shape.filter(ImageFilter.MinFilter(3)).filter(ImageFilter.MaxFilter(7)), region)
+        shape = ImageChops.multiply(fill_rows(shape), region).filter(ImageFilter.MinFilter(3))
+        if not shape.getbbox():
+            raise ValueError("지정한 영역에서 배경판과 다른 부분(옮길 장비)을 찾지 못했습니다.")
+        if pivot is None:
+            pivot = ((min(c[0] for c in corners) + max(c[2] for c in corners)) / 2 / width,
+                     (min(c[1] for c in corners) + max(c[3] for c in corners)) / 2 / height)
+        px, py, dx, dy, a = pivot[0] * width, pivot[1] * height, shift[0] * width, shift[1] * height, 1 / scale
+        matrix = (a, 0, px - (px + dx) * a, 0, a, py - (py + dy) * a)
+        moved = first.transform(first.size, Image.AFFINE, matrix, resample=Image.BICUBIC)
+        moved_shape = shape.transform(first.size, Image.AFFINE, matrix, resample=Image.BILINEAR)
+        uncovered = ImageChops.lighter(shape, moved_shape).filter(ImageFilter.MaxFilter(7))
+        result = Image.composite(empty, first, uncovered.filter(ImageFilter.GaussianBlur(feather)))
+        Image.composite(moved, result, moved_shape.filter(ImageFilter.GaussianBlur(1))).save(target)
+    with Path(target).open("rb") as stream:
+        return {"path": str(target), "sha256": hashlib.file_digest(stream, "sha256").hexdigest()}
+
+
 def main(spec_file):
     from . import control, neodragon
     spec = json.loads(Path(spec_file).read_text(encoding="utf-8"))

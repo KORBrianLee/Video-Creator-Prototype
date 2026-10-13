@@ -167,5 +167,43 @@ class PasteRegionTests(unittest.TestCase):
                 self.assertEqual(result.getpixel((124, 30)), (0, 0, 255))
 
 
+class MoveObjectTests(unittest.TestCase):
+    def scene(self, temp, with_object=True):
+        from PIL import Image, ImageDraw
+        background = Image.linear_gradient("L").resize((200, 100)).convert("RGB")
+        frame = background.copy()
+        if with_object:
+            ImageDraw.Draw(frame).rectangle((30, 40, 69, 69), fill=(250, 200, 0))
+        paths = [Path(temp) / name for name in ("f.png", "p.png", "t.png")]
+        frame.save(paths[0])
+        background.save(paths[1])
+        return paths, frame, background
+
+    def test_the_machine_moves_and_what_it_uncovers_comes_from_the_plate(self):
+        from PIL import Image
+        with tempfile.TemporaryDirectory() as temp:
+            (frame, plate, target), original, background = self.scene(temp)
+            frame_pick.move_object(frame, plate, target, [(0.1, 0.3, 0.4, 0.8)], (0.25, 0.0))
+            with Image.open(target) as result:
+                self.assertEqual(result.getpixel((100, 55)), (250, 200, 0))
+                self.assertEqual(result.getpixel((40, 55)), background.getpixel((40, 55)))
+                self.assertEqual(result.getpixel((180, 10)), original.getpixel((180, 10)))
+
+    def test_scale_above_one_brings_it_closer(self):
+        from PIL import Image
+        with tempfile.TemporaryDirectory() as temp:
+            (frame, plate, target), _, _ = self.scene(temp)
+            frame_pick.move_object(frame, plate, target, [(0.1, 0.3, 0.4, 0.8)], (0.0, 0.0), scale=1.5, pivot=(0.15, 0.4))
+            with Image.open(target) as result:
+                wide = [x for x in range(200) if result.getpixel((x, 50))[0] > 200 and result.getpixel((x, 50))[2] < 80]
+                self.assertGreaterEqual(len(wide), 58)  # 40 px wide before, 60 after
+
+    def test_nothing_to_move_is_an_error(self):
+        with tempfile.TemporaryDirectory() as temp:
+            (frame, plate, target), _, _ = self.scene(temp, with_object=False)
+            with self.assertRaises(ValueError):
+                frame_pick.move_object(frame, plate, target, [(0.1, 0.3, 0.4, 0.8)], (0.25, 0.0))
+
+
 if __name__ == "__main__":
     unittest.main()

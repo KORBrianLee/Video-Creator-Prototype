@@ -55,6 +55,14 @@ def main():
     zoom.add_argument("--zoom", type=float, required=True, help="1보다 크면 그 지점으로 다가간 화면, 작으면 물러난 화면")
     zoom.add_argument("--fixed-bottom", type=float, default=0.0, help="0~1: 카메라와 함께 움직이는 화면 아래 장비 부분(평형추, 버킷 끝)의 높이")
     zoom.add_argument("--centre", default="0.5,0.5", help="x,y (0~1) 다가가는 지점")
+    move = sub.add_parser("move-object", help="키프레임용 장비 이동: 같은 화면에서 그 장비만 지운 배경판과 달라진 부분을 옮기고 크기를 바꿈(비킨 자리는 배경판)")
+    move.add_argument("frame", type=Path)
+    move.add_argument("plate", type=Path)
+    move.add_argument("target", type=Path)
+    move.add_argument("--box", action="append", required=True, help="x0,y0,x1,y1 (0~1) 장비 영역. 뒤 배경이 따라오지 않게 좁게, 여러 번 지정 가능")
+    move.add_argument("--shift", required=True, help="dx,dy (0~1, 화면 폭·높이 비율)")
+    move.add_argument("--scale", type=float, default=1.0, help="1보다 크면 카메라 쪽으로 다가온 크기")
+    move.add_argument("--pivot", help="x,y (0~1) 크기 변화 기준점(기본: 상자들의 중심)")
     cleanup = sub.add_parser("clean", help="차수 끝 저장공간 정리: 지울 목록만 보여 주고 --apply일 때 지움(STATE.json에 적힌 작업·대기/실행 중 작업·모델은 남김)")
     cleanup.add_argument("--apply", action="store_true")
     cleanup.add_argument("--days", type=float, default=3, help="기록되지 않은 완료 작업과 클립 캐시를 남겨 둘 기간(일)")
@@ -105,6 +113,11 @@ def main():
             from local_video.frame_pick import zoom_keyframe
             result = zoom_keyframe(args.source, args.target, args.zoom, args.fixed_bottom,
                                    tuple(float(v) for v in args.centre.split(",")))
+        elif args.action == "move-object":
+            from local_video.frame_pick import move_object
+            result = move_object(args.frame, args.plate, args.target, [tuple(float(v) for v in box.split(",")) for box in args.box],
+                                 tuple(float(v) for v in args.shift.split(",")), args.scale,
+                                 tuple(float(v) for v in args.pivot.split(",")) if args.pivot else None)
         elif args.action == "clean":
             from local_video.cleanup import clean
             result = clean(control.load_config()[1], args.days, args.apply, refresh=control.status)
