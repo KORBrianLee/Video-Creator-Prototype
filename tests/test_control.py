@@ -223,6 +223,24 @@ class ControllerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             control.normalize({**self.request, "keyframes": [{"image_path": str(image), "at": 0.5}]})
 
+    def test_the_engine_goes_to_the_oldest_waiting_job(self):
+        jobs = self.root / "jobs"
+
+        def job(name, **status):
+            (jobs / name).mkdir(parents=True, exist_ok=True)
+            control.write_json(jobs / name / "status.json", {"job_id": name, **status})
+
+        job("aaaaaaaaaaaa", state="queued", created_at=100.0, updated_at=990.0)
+        job("bbbbbbbbbbbb", state="queued", created_at=200.0, updated_at=995.0)
+        job("cccccccccccc", state="queued", created_at=300.0, updated_at=995.0)
+        self.assertTrue(control.older_job_waiting("bbbbbbbbbbbb", self.root, now=1000.0))
+        self.assertFalse(control.older_job_waiting("aaaaaaaaaaaa", self.root, now=1000.0))
+        job("aaaaaaaaaaaa", state="queued", created_at=100.0, updated_at=900.0)  # its worker went quiet
+        self.assertFalse(control.older_job_waiting("bbbbbbbbbbbb", self.root, now=1000.0))
+        job("aaaaaaaaaaaa", state="running", created_at=100.0, updated_at=999.0)
+        self.assertFalse(control.older_job_waiting("bbbbbbbbbbbb", self.root, now=1000.0))
+        self.assertTrue(control.older_job_waiting("cccccccccccc", self.root, now=1000.0))
+
     def test_holds_are_spans_of_a_checked_picture(self):
         image = self.root / "stopped.png"
         image.write_bytes(b"png")

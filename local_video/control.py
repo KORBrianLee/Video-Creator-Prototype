@@ -763,6 +763,25 @@ class EngineLock:
             self.stream.close()
             self.stream = None
 
+def older_job_waiting(job_id, root, now=None):
+    """True while a job queued earlier still waits for the engine (waiting workers refresh their status every 15 s),
+    so the engine goes to jobs in queue order rather than to whichever waiting worker polls first."""
+    now = time.time() if now is None else now
+    jobs = runtime_path(root, "jobs")
+    mine = read_json(jobs / job_id / "status.json").get("created_at", now)
+    for path in jobs.glob("*/status.json"):
+        if path.parent.name == job_id:
+            continue
+        try:
+            other = read_json(path)
+        except (OSError, ValueError):
+            continue
+        if (other.get("state") == "queued" and other.get("created_at", now) < mine
+                and now - other.get("updated_at", other.get("created_at", 0)) < 60):
+            return True
+    return False
+
+
 def worker(job_id):
     from .resources import run_unthrottled
     run_unthrottled()
@@ -779,7 +798,7 @@ def worker(job_id):
     try:
         progress({"worker_pid": os.getpid()})
         last_heartbeat = time.monotonic()
-        while not lock.acquire():
+        while older_job_waiting(job_id, root) or not lock.acquire():
             if cancelled():
                 raise InterruptedError("대기 중 취소됐습니다.")
             time.sleep(1)
