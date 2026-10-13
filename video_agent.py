@@ -55,6 +55,9 @@ def main():
     zoom.add_argument("--zoom", type=float, required=True, help="1보다 크면 그 지점으로 다가간 화면, 작으면 물러난 화면")
     zoom.add_argument("--fixed-bottom", type=float, default=0.0, help="0~1: 카메라와 함께 움직이는 화면 아래 장비 부분(평형추, 버킷 끝)의 높이")
     zoom.add_argument("--centre", default="0.5,0.5", help="x,y (0~1) 다가가는 지점")
+    cleanup = sub.add_parser("clean", help="차수 끝 저장공간 정리: 지울 목록만 보여 주고 --apply일 때 지움(STATE.json에 적힌 작업·대기/실행 중 작업·모델은 남김)")
+    cleanup.add_argument("--apply", action="store_true")
+    cleanup.add_argument("--days", type=float, default=3, help="기록되지 않은 완료 작업과 클립 캐시를 남겨 둘 기간(일)")
     args = parser.parse_args()
     try:
         from local_video.storage import cache_environment
@@ -102,6 +105,9 @@ def main():
             from local_video.frame_pick import zoom_keyframe
             result = zoom_keyframe(args.source, args.target, args.zoom, args.fixed_bottom,
                                    tuple(float(v) for v in args.centre.split(",")))
+        elif args.action == "clean":
+            from local_video.cleanup import clean
+            result = clean(control.load_config()[1], args.days, args.apply, refresh=control.status)
         else:
             result = getattr(control, args.action)(args.job_id)
         print(json.dumps(result, ensure_ascii=False))
