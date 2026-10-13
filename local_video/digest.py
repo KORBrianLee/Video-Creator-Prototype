@@ -201,8 +201,9 @@ def vest_boxes(image, scan_width=512, largest=0.015, smallest=(0.08, 0.28)):
     for y in range(height):
         for x in range(width):
             hue, sat, val = hsv[x, y]
-            # Safety orange sits at hue 10-22 (PIL 0-255); mustard and yellow machine paint at 28-36.
-            vest[y][x] = (45 <= hue < 62 and sat > 110 and val > 170) or (8 <= hue < 23 and sat > 170 and val > 150)
+            # Hue on PIL's 0-255 scale: rendered orange vests measured 12-13 and lime vests 45-57, while mustard
+            # machine paint reads 21-22 in shade (crane, excavator, counterweight) and 28-36 in light.
+            vest[y][x] = (45 <= hue < 62 and sat > 110 and val > 170) or (8 <= hue < 19 and sat > 170 and val > 150)
     seen, boxes = set(), []
     for y in range(height):
         for x in range(width):
