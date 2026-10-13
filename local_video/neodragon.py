@@ -274,7 +274,8 @@ def run_stage(root, work, name, request, progress, is_cancelled):
             record.update(gpu_inference=True, gpu={"backend": f"torch_{device_record['device']}", "model": device_record.get("model"),
                                                    "weights": device_record.get("weights"),
                                                    "peak_gpu_allocated_bytes": device_record.get("peak_gpu_allocated_bytes"),
-                                                   "settings": device_record.get("settings")})
+                                                   "settings": device_record.get("settings"),
+                                                   "timing": device_record.get("timing"), "prompt": device_record.get("prompt")})
         if name == "video_infer" and request.get("device_plan", {}).get("gpu_inference"):
             ran_on, device_record = None, {}
             if (work / "torch-device.json").is_file():

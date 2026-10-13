@@ -66,6 +66,25 @@ def quality_warnings(luma, saturation):
     return warnings
 
 
+def long_video_notes(phases):
+    """Timing and prompt checks from a long-video stage: seconds for text, weight loading, the first denoising step
+    (it also prepares the conditions), the mean of the rest and decoding, plus a warning when the prompt was cut."""
+    timing, warnings = None, []
+    for phase in phases:
+        gpu = phase.get("gpu") or {}
+        recorded = gpu.get("timing") or {}
+        steps = recorded.get("denoise_step_seconds") or []
+        if steps:
+            rest = steps[1:] or steps
+            timing = {"text": recorded.get("text_seconds"), "load": recorded.get("load_seconds"),
+                      "first_step": steps[0], "per_step": round(sum(rest) / len(rest), 1), "steps": len(steps),
+                      "decode": recorded.get("decode_seconds")}
+        prompt = gpu.get("prompt") or {}
+        if prompt.get("truncated"):
+            warnings.append(f"prompt_truncated: {prompt['tokens']}>{prompt['limit']} tokens")
+    return timing, warnings
+
+
 def job_digest(job_id, with_signals=True):
     """Small summary of one job: outcome, timing per stage, memory peaks, GPU use and quality warnings."""
     from . import control
@@ -99,14 +118,19 @@ def job_digest(job_id, with_signals=True):
             if (phase.get("gpu") or {}).get("backend"):
                 digest["gpu"] = phase["gpu"]["backend"]
         digest["stages_s_gib"] = stages
+        timing, notes = long_video_notes(shot.get("phases", []))
+        if timing:
+            digest["timing"] = timing
         digest["safety_unsafe"] = (shot.get("safety") or {}).get("unsafe")
         continuity = (shot.get("verification") or {}).get("continuity") or {}
         digest["continuity"] = continuity.get("state")
         video = Path(result.get("video_path", ""))
         if with_signals and video.is_file():
             signals = frame_signals(video, root / "tmp")
-            digest["warnings"] = signals["warnings"]
+            digest["warnings"] = signals["warnings"] + notes
             digest["luma"] = signals["luma"]
+        elif notes:
+            digest["warnings"] = notes
         digest["review_image"] = result.get("contact_sheet_path")
         digest["video_path"] = result.get("video_path")
     text = json.dumps(digest, ensure_ascii=False)

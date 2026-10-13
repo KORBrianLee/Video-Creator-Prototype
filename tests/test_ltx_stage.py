@@ -8,6 +8,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 HAS_TORCH = importlib.util.find_spec("torch") is not None
 
 
+class LtxRecordTests(unittest.TestCase):
+    def test_timing_splits_loading_steps_and_decoding(self):
+        from local_video.ltx_stage import timing_record
+        record = timing_record(load_start=100.0, pipe_start=112.0, step_ends=[345.7, 491.7, 641.7], pipe_end=942.2)
+        self.assertEqual(record, {"load_seconds": 12.0, "denoise_step_seconds": [233.7, 146.0, 150.0],
+                                  "decode_seconds": 300.5})
+
+    def test_a_prompt_longer_than_the_encoder_reads_is_marked(self):
+        from local_video.ltx_stage import prompt_record
+        self.assertEqual(prompt_record(142, 128), {"tokens": 142, "limit": 128, "truncated": True})
+        self.assertFalse(prompt_record(128, 128)["truncated"])
+
+
 @unittest.skipUnless(HAS_TORCH, "torch is only in the video runtime")
 class LtxStageTests(unittest.TestCase):
     def test_noise_is_drawn_on_the_generator_device_then_moved(self):

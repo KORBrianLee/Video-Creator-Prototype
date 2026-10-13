@@ -177,18 +177,34 @@ def model_folder(root):
     return root / "models" / lock["folder"]
 
 
+def prompt_record(needed, limit):
+    """How much of the prompt the model reads: tokens past `limit` are cut off without any error."""
+    return {"tokens": needed, "limit": limit, "truncated": needed > limit}
+
+
+def timing_record(load_start, pipe_start, step_ends, pipe_end):
+    """Seconds for loading the weights, each denoising step (the first also prepares the conditions) and
+    decoding, which is everything after the last step."""
+    marks = [pipe_start, *step_ends]
+    return {"load_seconds": round(pipe_start - load_start, 1),
+            "denoise_step_seconds": [round(after - before, 1) for before, after in zip(marks, marks[1:])],
+            "decode_seconds": round(pipe_end - marks[-1], 1)}
+
+
 def encode_text(torch, device, folder, prompt, max_length):
     """T5-XXL encoder run once per prompt on the CPU (128 tokens, tens of seconds), then released.
 
     T5's relative-position buckets need integer/bool casts that the Iris Xe driver cannot run, and the
     encoder is used once per clip, so the CPU is the robust place for it. BF16 weights stay mapped and
-    each Linear is widened to FP32 per call. Returns FP32 embeddings and mask on the GPU.
+    each Linear is widened to FP32 per call. Returns FP32 embeddings and mask on the GPU, and the number
+    of tokens the whole prompt needs.
     """
     from local_video import readonly_weights
     readonly_weights.install(transformers=True)
     from transformers import T5EncoderModel, T5TokenizerFast
     from local_video.neodragon_quant import float_non_linear_parameters, stream_linears
     tokenizer = T5TokenizerFast.from_pretrained(folder / "tokenizer", local_files_only=True)
+    needed = len(tokenizer(prompt, add_special_tokens=True).input_ids)
     tokens = tokenizer(prompt, max_length=max_length, padding="max_length", truncation=True,
                        add_special_tokens=True, return_tensors="pt")
     encoder = T5EncoderModel.from_pretrained(folder / "text_encoder", torch_dtype=torch.bfloat16, low_cpu_mem_usage=True,
@@ -201,7 +217,7 @@ def encode_text(torch, device, folder, prompt, max_length):
         embeds = encoder(tokens.input_ids, attention_mask=mask).last_hidden_state.float()
     del encoder
     # Masks are made FP32 on the CPU: integer-to-float casts on the GPU are what this driver cannot run.
-    return embeds.to(device), mask.to(device)
+    return embeds.to(device), mask.to(device), needed
 
 
 def generate(root, output):
@@ -212,14 +228,16 @@ def generate(root, output):
     torch.set_num_threads(min(8, max(1, request.get("threads", 4))))
     started = time.monotonic()
     prompt = request["prompt"] + request.get("prompt_modifier", ", cinematic, realistic textures, high detail, natural colours")
-    prompt_embeds, mask = encode_text(torch, device, model_folder(root), prompt, settings["max_sequence_length"])
+    prompt_embeds, mask, needed = encode_text(torch, device, model_folder(root), prompt, settings["max_sequence_length"])
     text_seconds = time.monotonic() - started
     frames, info = render(torch, device, root, output / "first-frame.png", settings, prompt_embeds, mask,
                           int(request["seed"]), bool(plan.get("torch_discrete")))
     for index, frame in enumerate(frames):
         frame.save(output / f"frame-{index:03d}.png")
+    info["timing"] = {"text_seconds": round(text_seconds, 1), **info["timing"]}
     (output / "torch-device.json").write_text(json.dumps({
         "stage": "ltx_generate", "device": device.type, "model": "ltx-video-2b-0.9.8-distilled", **info,
+        "prompt": prompt_record(needed, settings["max_sequence_length"]),
         "text_seconds": round(text_seconds, 1), "seconds": round(time.monotonic() - started, 1), "settings": settings}),
         encoding="utf-8")
 
@@ -231,6 +249,7 @@ def render(torch, device, root, first_frame, settings, prompt_embeds, mask, seed
                            LTXVideoTransformer3DModel)
     from local_video.neodragon_quant import float_non_linear_parameters, linear_weight_bytes, stream_convs, stream_linears
     from local_video import readonly_weights
+    load_start = time.monotonic()
     readonly_weights.install()
     folder = model_folder(root)
     checkpoint = folder / "ltxv-2b-0.9.8-distilled.safetensors"
@@ -293,18 +312,29 @@ def render(torch, device, root, first_frame, settings, prompt_embeds, mask, seed
         pipe = LTXImageToVideoPipeline(scheduler=scheduler, vae=vae, text_encoder=None, tokenizer=None, transformer=transformer)
         inputs = {"image": image}
     generator = torch.Generator(device="cpu").manual_seed(seed)
+    step_ends = []
+
+    def mark_step(pipeline, index, timestep, tensors):
+        # GPU work is queued asynchronously; without the wait, a step's time would leak into the next one.
+        if hasattr(gpu, "synchronize"):
+            gpu.synchronize()
+        step_ends.append(time.monotonic())
+        return tensors
+
+    pipe_start = time.monotonic()
     with torch.inference_mode(), generator_side_noise(torch):
         result = pipe(**inputs, prompt_embeds=prompt_embeds, prompt_attention_mask=mask,
                       height=settings["height"], width=settings["width"], num_frames=settings["frames"],
                       frame_rate=settings["fps"], num_inference_steps=len(settings["timesteps"]),
                       guidance_scale=settings["guidance_scale"], decode_timestep=settings["decode_timestep"],
                       decode_noise_scale=settings["decode_noise_scale"], generator=generator, output_type="pil",
-                      max_sequence_length=settings["max_sequence_length"])
+                      max_sequence_length=settings["max_sequence_length"], callback_on_step_end=mark_step)
+    pipe_end = time.monotonic()
     frames = result.frames[0]
     if len(frames) != settings["frames"]:
         raise RuntimeError(f"LTX returned {len(frames)} frames, expected {settings['frames']}")
     return frames, {"weights": "resident" if resident else "streamed", "peak_gpu_allocated_bytes": gpu.max_memory_allocated(),
-                    "anchor_end": anchor}
+                    "anchor_end": anchor, "timing": timing_record(load_start, pipe_start, step_ends, pipe_end)}
 
 
 if __name__ == "__main__":

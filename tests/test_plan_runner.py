@@ -95,5 +95,21 @@ class QualityWarningTests(unittest.TestCase):
         self.assertEqual(digest.quality_warnings([90, 88, 86, 87, 85, 84], [40, 41, 42, 40, 43, 41]), [])
 
 
+class LongVideoNotesTests(unittest.TestCase):
+    def test_step_timing_and_a_cut_prompt_are_reported(self):
+        phases = [{"name": "first_frame"},
+                  {"name": "ltx_generate", "gpu": {"timing": {"text_seconds": 40.2, "load_seconds": 12.0,
+                                                              "denoise_step_seconds": [233.7, 146.0, 150.0],
+                                                              "decode_seconds": 300.5},
+                                                   "prompt": {"tokens": 142, "limit": 128, "truncated": True}}}]
+        timing, warnings = digest.long_video_notes(phases)
+        self.assertEqual(timing, {"text": 40.2, "load": 12.0, "first_step": 233.7, "per_step": 148.0, "steps": 3,
+                                  "decode": 300.5})
+        self.assertEqual(warnings, ["prompt_truncated: 142>128 tokens"])
+
+    def test_older_records_without_timing_add_nothing(self):
+        self.assertEqual(digest.long_video_notes([{"name": "ltx_generate", "gpu": {"backend": "torch_xpu"}}]), (None, []))
+
+
 if __name__ == "__main__":
     unittest.main()
