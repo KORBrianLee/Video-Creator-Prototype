@@ -47,8 +47,14 @@ def main():
     paste.add_argument("--scale", type=float, default=1.0)
     paste.add_argument("--clean", type=Path, help="source에서 사람을 지운 배경판(사람 모양만 오려 붙이기)")
     paste.add_argument("--threshold", type=int, default=28, help="배경판과의 차이 기준(배경까지 붙으면 높인다)")
-    paste.add_argument("--ppe", action="store_true", help="보호구 색(주황 조끼·흰 헬멧·짙은 작업복)으로 작업자 모양 찾기")
+    paste.add_argument("--ppe", action="store_true", help="보호구 색(주황·노랑·형광 연두 조끼, 흰·빨강·노랑 안전모, 짙은 작업복)으로 작업자 모양 찾기")
     paste.add_argument("--solid", type=float, help="0~1: 이 높이 아래 실루엣 안쪽 구멍을 가로줄 단위로 채우기(손을 든 경우 0.4)")
+    zoom = sub.add_parser("zoom-key", help="장비에 달린 카메라용 키프레임: 첫 프레임을 확대(전진)·축소(후퇴)하고 화면 아래 장비 부분은 그대로")
+    zoom.add_argument("source", type=Path)
+    zoom.add_argument("target", type=Path)
+    zoom.add_argument("--zoom", type=float, required=True, help="1보다 크면 그 지점으로 다가간 화면, 작으면 물러난 화면")
+    zoom.add_argument("--fixed-bottom", type=float, default=0.0, help="0~1: 카메라와 함께 움직이는 화면 아래 장비 부분(평형추, 버킷 끝)의 높이")
+    zoom.add_argument("--centre", default="0.5,0.5", help="x,y (0~1) 다가가는 지점")
     args = parser.parse_args()
     try:
         from local_video.storage import cache_environment
@@ -90,6 +96,10 @@ def main():
                                   tuple(float(v) for v in args.at.split(",")), args.target, args.scale,
                                   clean=args.clean, threshold=args.threshold,
                                   solid=args.solid if args.solid is not None else False, ppe=args.ppe)
+        elif args.action == "zoom-key":
+            from local_video.frame_pick import zoom_keyframe
+            result = zoom_keyframe(args.source, args.target, args.zoom, args.fixed_bottom,
+                                   tuple(float(v) for v in args.centre.split(",")))
         else:
             result = getattr(control, args.action)(args.job_id)
         print(json.dumps(result, ensure_ascii=False))

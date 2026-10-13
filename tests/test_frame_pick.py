@@ -109,7 +109,25 @@ class PpeMaskTests(unittest.TestCase):
         self.assertEqual([mask.getpixel((x, 0)) for x in range(len(colours))], [255, 255, 0, 0, 0])
 
 
+class ZoomKeyframeTests(unittest.TestCase):
+    def test_view_magnifies_but_the_machine_part_at_the_bottom_stays(self):
+        from PIL import Image, ImageDraw
+        with tempfile.TemporaryDirectory() as temp:
+            source, target = Path(temp) / "s.png", Path(temp) / "k.png"
+            image = Image.new("RGB", (200, 100), (90, 90, 90))
+            draw = ImageDraw.Draw(image)
+            draw.rectangle((90, 30, 109, 49), fill=(250, 250, 250))   # a distant post, 20 px wide
+            draw.rectangle((0, 90, 199, 99), fill=(240, 180, 0))      # counterweight edge
+            image.save(source)
+            frame_pick.zoom_keyframe(source, target, 2.0, fixed_bottom=0.1, feather=1)
+            with Image.open(target) as key:
+                post = [x for x in range(200) if key.getpixel((x, 30))[0] > 200]
+                self.assertGreaterEqual(len(post), 36)                # twice as wide after the zoom
+                self.assertEqual(key.getpixel((100, 97)), (240, 180, 0))
+
+
 class FillRowsTests(unittest.TestCase):
+
     def test_gaps_inside_each_row_are_closed(self):
         from PIL import Image
         mask = Image.new("L", (10, 2), 0)

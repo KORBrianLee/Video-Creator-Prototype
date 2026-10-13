@@ -118,6 +118,35 @@ def compose_keyframe(start, end, keep, target, feather=24):
         return {"path": str(target), "sha256": hashlib.file_digest(stream, "sha256").hexdigest()}
 
 
+def zoom_keyframe(source, target, zoom, fixed_bottom=0.0, centre=(0.5, 0.5), feather=8):
+    """Keyframe for a camera riding on a machine: the opening frame magnified about `centre` stands in for the
+    view after travelling toward it (distant ground barely shows the difference between zoom and parallax).
+    The machine's own part at the bottom (counterweight, bucket edge, chute, hood) moves with the camera, so
+    the bottom `fixed_bottom` (0-1 of the height) keeps the opening frame's pixels. A zoom below 1 stands in for
+    backing away from the view."""
+    from PIL import Image, ImageDraw, ImageFilter
+    with Image.open(source) as opening:
+        opening = opening.convert("RGB")
+        width, height = opening.size
+        crop_w, crop_h = width / zoom, height / zoom
+        left = min(max(centre[0] * width - crop_w / 2, 0 if zoom >= 1 else width - crop_w), max(width - crop_w, 0))
+        top = min(max(centre[1] * height - crop_h / 2, 0 if zoom >= 1 else height - crop_h), max(height - crop_h, 0))
+        if zoom >= 1:
+            view = opening.crop((round(left), round(top), round(left + crop_w), round(top + crop_h)))
+        else:  # backing away: the opening frame shrinks inside its own blurred surroundings
+            view = opening.filter(ImageFilter.GaussianBlur(12))
+            small = opening.resize((round(width * zoom), round(height * zoom)), Image.LANCZOS)
+            view.paste(small, (round((width - small.width) * centre[0]), round((height - small.height) * centre[1])))
+        view = view.resize((width, height), Image.LANCZOS)
+        if fixed_bottom > 0:
+            mask = Image.new("L", (width, height), 0)
+            ImageDraw.Draw(mask).rectangle((0, round(height * (1 - fixed_bottom)), width, height), fill=255)
+            view = Image.composite(opening, view, mask.filter(ImageFilter.GaussianBlur(feather)))
+        view.save(target)
+    with Path(target).open("rb") as stream:
+        return {"path": str(target), "sha256": hashlib.file_digest(stream, "sha256").hexdigest()}
+
+
 def fill_rows(mask, start=0.0):
     """Close holes in an upright figure: each row from `start` (0-1 of the height) down is filled
     between its first and last set pixel. Dark clothing over dark ground leaves gaps in a difference
