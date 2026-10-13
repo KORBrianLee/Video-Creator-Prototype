@@ -17,6 +17,10 @@ DIGEST_LIMIT = 2048
 # Strongest local change at 96 px width: an LTX 15 s tower clip whose truck and walking worker barely moved measured
 # 20, an 8 s clip whose crane load travelled across the bay 114. Sampling grain and compression alone stay below.
 LITTLE_MOTION_P99 = 40
+# Median share of the change from the first sample that a small zoom/shift of it explains, at 96 px width: an LTX
+# tower clip whose framing kept alternating measured 0.59 and a 2 s tracking shot 0.33, while locked clips stayed at
+# or below 0.06, including dump trucks driving at the camera and a receding cart (single samples up to 0.23).
+CAMERA_MOVED_FIT = 0.25
 
 
 def frame_signals(video, runtime_tmp, samples=SAMPLES):
@@ -43,9 +47,33 @@ def frame_signals(video, runtime_tmp, samples=SAMPLES):
             "warnings": quality_warnings(luma, saturation) + motion_warnings(motion)}
 
 
+def camera_fit(first, later):
+    """Share of the change from `first` to `later` that a small zoom and shift of `first` explains: high when the
+    camera moved, near 0 when a subject moves in front of a still, textured background."""
+    from PIL import Image, ImageChops, ImageStat
+    w, h = first.size
+    box = (10, 8, w - 10, h - 8)
+    target = later.crop(box)
+    base = ImageStat.Stat(ImageChops.difference(first.crop(box), target)).mean[0]
+    if base <= 0.5:
+        return 0.0
+    best = base
+    for scale in (0.92, 0.96, 1.0, 1.04, 1.08):
+        a = 1 / scale
+        for dy in range(-10, 11, 2):
+            for dx in range(-8, 9, 2):
+                if scale == 1.0 and dx == dy == 0:
+                    continue
+                moved = first.transform((w, h), Image.AFFINE, (a, 0, w / 2 + dx - a * w / 2, 0, a, h / 2 + dy - a * h / 2),
+                                        resample=Image.BILINEAR)
+                best = min(best, ImageStat.Stat(ImageChops.difference(moved.crop(box), target)).mean[0])
+    return round(1 - best / base, 2)
+
+
 def motion_signals(grays):
-    """How much the picture changes: mean change between neighbouring samples (camera or large motion) and the
-    strongest local change from the first sample (the 99th percentile pixel: a subject moving in a still view)."""
+    """How much the picture changes: mean change between neighbouring samples (camera or large motion), the
+    strongest local change from the first sample (the 99th percentile pixel: a subject moving in a still view) and
+    the median camera fit (the camera itself moved)."""
     from PIL import ImageChops, ImageStat
     if len(grays) < 2:
         return {}
@@ -59,14 +87,20 @@ def motion_signals(grays):
             if seen >= threshold:
                 local = max(local, value)
                 break
-    return {"step_mean": round(sum(steps) / len(steps), 2), "step_max": round(max(steps), 2), "local_p99": local}
+    fits = sorted(camera_fit(grays[0], later) for later in grays[1:])
+    return {"step_mean": round(sum(steps) / len(steps), 2), "step_max": round(max(steps), 2), "local_p99": local,
+            "camera_fit": fits[len(fits) // 2]}
 
 
 def motion_warnings(motion):
-    """`little_motion` when no subject visibly moves; thresholds from measured clips (see tests)."""
+    """`little_motion` when no subject visibly moves, `camera_moved` when the view itself moved (a failure for a
+    locked tower or tripod shot); thresholds from measured clips (see tests)."""
+    warnings = []
     if motion and motion["local_p99"] < LITTLE_MOTION_P99:
-        return [f"little_motion: p99 {motion['local_p99']}"]
-    return []
+        warnings.append(f"little_motion: p99 {motion['local_p99']}")
+    if motion and motion.get("camera_fit", 0) >= CAMERA_MOVED_FIT:
+        warnings.append(f"camera_moved: fit {motion['camera_fit']}")
+    return warnings
 
 
 def count_frames(video):

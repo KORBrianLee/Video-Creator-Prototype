@@ -96,17 +96,25 @@ class QualityWarningTests(unittest.TestCase):
 
 
 class MotionSignalTests(unittest.TestCase):
+    def background(self):
+        # Real footage is textured; on a flat background a zoom or shift would also "explain" a moving subject.
+        from PIL import Image, ImageFilter
+        image = Image.new("L", (120, 80))
+        image.putdata([(x * 37 + y * 91 + (x * y) % 23 * 11) % 256 for y in range(80) for x in range(120)])
+        return image.filter(ImageFilter.GaussianBlur(1))
+
     def frames(self, moving):
-        from PIL import Image, ImageDraw
+        from PIL import ImageDraw
         frames = []
         for index in range(6):
-            image = Image.new("L", (96, 54), 100)
-            for x in range(0, 96, 7):  # fixed texture with a little per-frame grain
-                image.putpixel((x, (x * 3 + index) % 54), 100 + (index % 3))
+            image = self.background().crop((10, 10, 106, 64))
+            for x in range(0, 96, 7):  # a little per-frame grain
+                point = (x, (x * 3 + index) % 54)
+                image.putpixel(point, min(255, image.getpixel(point) + index % 3))
             if moving:
-                ImageDraw.Draw(image).rectangle((10 + index * 12, 20, 19 + index * 12, 34), fill=200)
+                ImageDraw.Draw(image).rectangle((10 + index * 12, 20, 19 + index * 12, 34), fill=255)
             else:
-                ImageDraw.Draw(image).rectangle((10, 20, 19, 34), fill=200)
+                ImageDraw.Draw(image).rectangle((10, 20, 19, 34), fill=255)
             frames.append(image)
         return frames
 
@@ -118,6 +126,14 @@ class MotionSignalTests(unittest.TestCase):
         self.assertEqual(digest.motion_warnings(still), [f"little_motion: p99 {still['local_p99']}"])
         self.assertEqual(digest.motion_warnings(crossing), [])
         self.assertEqual(digest.motion_signals(self.frames(moving=False)[:1]), {})
+
+    def test_a_tilting_camera_is_told_apart_from_a_subject_crossing_a_locked_view(self):
+        background = self.background()
+        crossing = digest.motion_signals(self.frames(moving=True))
+        tilting = digest.motion_signals([background.crop((10, 10 + 2 * i, 106, 64 + 2 * i)) for i in range(6)])
+        self.assertLess(crossing["camera_fit"], digest.CAMERA_MOVED_FIT)
+        self.assertGreaterEqual(tilting["camera_fit"], digest.CAMERA_MOVED_FIT)
+        self.assertEqual(digest.motion_warnings(tilting), [f"camera_moved: fit {tilting['camera_fit']}"])
 
 
 class LongVideoNotesTests(unittest.TestCase):
