@@ -134,10 +134,11 @@ def fill_rows(mask, start=0.0):
 
 
 def ppe_mask(patch):
-    """Silhouette of a worker in high-visibility PPE without a clean plate: saturated orange or
-    yellow vest, bright white helmet and dark work clothes, against grey sky, buildings, gravel and
-    grass. A generated clean plate never matches the real background pixel for pixel, so a
-    difference mask also picks up building edges around the worker."""
+    """Silhouette of a worker in high-visibility PPE without a clean plate: saturated orange, yellow or
+    fluorescent lime vest, red or yellow helmet, bright white helmet and dark work clothes, against grey
+    sky, buildings, gravel and grass. A generated clean plate never matches the real background pixel
+    for pixel, so a difference mask also picks up building edges around the worker. Lime shares its hue
+    with sunlit grass, so it counts only when it is as saturated and bright as a fluorescent vest."""
     from PIL import Image
     hsv = patch.convert("HSV")
     gray = patch.convert("L")
@@ -146,7 +147,7 @@ def ppe_mask(patch):
     for y in range(patch.height):
         for x in range(patch.width):
             hue, sat, val = h[x, y]
-            vest = sat > 120 and val > 110 and (hue < 45 or hue > 240)
+            vest = sat > 120 and val > 110 and (hue < 45 or hue > 240) or sat > 140 and val > 140 and 45 <= hue < 62
             helmet = g[x, y] > 225 and sat < 40
             clothes = g[x, y] < 55
             if vest or helmet or clothes:

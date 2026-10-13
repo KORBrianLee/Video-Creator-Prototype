@@ -99,6 +99,15 @@ class PpeMaskTests(unittest.TestCase):
         mask = frame_pick.ppe_mask(patch)
         self.assertEqual([mask.getpixel((x, 0)) for x in range(4)], [255, 255, 255, 0])
 
+    def test_lime_vest_and_red_helmet_are_kept_grass_and_foliage_are_not(self):
+        from PIL import Image
+        colours = [(190, 230, 40), (200, 30, 30), (90, 120, 50), (60, 110, 40), (120, 140, 70)]
+        patch = Image.new("RGB", (len(colours), 1))
+        for x, colour in enumerate(colours):
+            patch.putpixel((x, 0), colour)
+        mask = frame_pick.ppe_mask(patch)
+        self.assertEqual([mask.getpixel((x, 0)) for x in range(len(colours))], [255, 255, 0, 0, 0])
+
 
 class FillRowsTests(unittest.TestCase):
     def test_gaps_inside_each_row_are_closed(self):
