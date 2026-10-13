@@ -214,8 +214,10 @@ def attention_budget_bytes(torch=None, device=None, discrete=False):
 def plain_attention(torch, query, key, value, attn_mask=None, scale=None):
     """Scores, softmax and weighted sum as three plain kernels. On Iris Xe the FP32 scaled_dot_product_attention
     kernel ran 1.7-3x slower than this (15 s at 512x288: 5.3 s against 3.1 s per layer in 512-row chunks), with
-    the same result to 5e-8."""
-    scores = torch.matmul(query, key.transpose(-1, -2)).mul_(query.shape[-1] ** -0.5 if scale is None else scale)
+    the same result to 5e-8. The scale goes on the queries: one pass less over the scores, 1.4x faster at 3000
+    tokens (for head size 64 the scale is 1/8, so the result is bit-identical)."""
+    scale = query.shape[-1] ** -0.5 if scale is None else scale
+    scores = torch.matmul(query * scale, key.transpose(-1, -2))
     if attn_mask is not None:
         scores.add_(attn_mask)
     return torch.matmul(scores.softmax(-1), value)
