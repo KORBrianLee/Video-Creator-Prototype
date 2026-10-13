@@ -211,11 +211,23 @@ def attention_budget_bytes(torch=None, device=None, discrete=False):
     return int(min(384 * resources.MIB, max(48 * resources.MIB, spare * 0.08)))
 
 
-def bound_attention_memory(torch, budget=None, device_types=("xpu", "cuda"), discrete=False):
+def plain_attention(torch, query, key, value, attn_mask=None, scale=None):
+    """Scores, softmax and weighted sum as three plain kernels. On Iris Xe the FP32 scaled_dot_product_attention
+    kernel ran 1.7-3x slower than this (15 s at 512x288: 5.3 s against 3.1 s per layer in 512-row chunks), with
+    the same result to 5e-8."""
+    scores = torch.matmul(query, key.transpose(-1, -2)).mul_(query.shape[-1] ** -0.5 if scale is None else scale)
+    if attn_mask is not None:
+        scores.add_(attn_mask)
+    return torch.matmul(scores.softmax(-1), value)
+
+
+def bound_attention_memory(torch, budget=None, device_types=("xpu", "cuda"), discrete=False, plain_types=("xpu",)):
     """Process attention in query chunks so score memory grows linearly with sequence length.
 
     A kernel that materializes the full T x T score matrix needs 3.3 GiB at T=6000. Every query
-    row attends to the same keys, so chunking the queries gives identical results.
+    row attends to the same keys, so chunking the queries gives identical results. On `plain_types`
+    devices attention without a boolean mask runs as plain kernels (see plain_attention); CUDA keeps
+    its fused kernel.
     """
     functional = torch.nn.functional
     original = functional.scaled_dot_product_attention
@@ -225,19 +237,27 @@ def bound_attention_memory(torch, budget=None, device_types=("xpu", "cuda"), dis
     def attention(query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None, **extra):
         if query.device.type not in device_types or is_causal or query.dim() < 3:
             return original(query, key, value, attn_mask=attn_mask, dropout_p=dropout_p, is_causal=is_causal, scale=scale, **extra)
+        plain = (query.device.type in plain_types and dropout_p == 0.0 and not extra
+                 and (attn_mask is None or attn_mask.dtype != torch.bool))
+
+        def kernel(rows_query, mask):
+            if plain:
+                return plain_attention(torch, rows_query, key, value, mask, scale)
+            return original(rows_query, key, value, attn_mask=mask, dropout_p=dropout_p, scale=scale, **extra)
+
         rows, keys = query.shape[-2], key.shape[-2]
-        per_row = (query.numel() // (rows * query.shape[-1])) * keys * 4
+        # The plain kernels hold the scores and their softmax at once.
+        per_row = (query.numel() // (rows * query.shape[-1])) * keys * 4 * (2 if plain else 1)
         allowed = budget() if budget is not None else attention_budget_bytes(torch, query.device, discrete)
         step = max(16, int(allowed // max(1, per_row)))
         if step >= rows:
-            return original(query, key, value, attn_mask=attn_mask, dropout_p=dropout_p, scale=scale, **extra)
+            return kernel(query, attn_mask)
         pieces = []
         for start in range(0, rows, step):
             mask = attn_mask
             if mask is not None and mask.dim() >= 2 and mask.shape[-2] == rows:
                 mask = mask[..., start:start + step, :]
-            pieces.append(original(query[..., start:start + step, :], key, value, attn_mask=mask,
-                                   dropout_p=dropout_p, scale=scale, **extra))
+            pieces.append(kernel(query[..., start:start + step, :], mask))
         return torch.cat(pieces, dim=-2)
 
     attention._memory_bounded = True

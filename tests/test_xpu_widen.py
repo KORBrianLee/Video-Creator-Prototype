@@ -83,6 +83,36 @@ class BoundedAttentionTests(unittest.TestCase):
         finally:
             functional.scaled_dot_product_attention = reference
 
+    def test_plain_attention_matches_the_kernel_and_boolean_masks_stay_on_it(self):
+        torch = torch_or_skip(self)
+        from local_video import accelerator
+        functional = torch.nn.functional
+        reference = functional.scaled_dot_product_attention
+        generator = torch.Generator().manual_seed(9)
+        query, key, value = (torch.randn(1, 3, 200, 16, generator=generator) for _ in range(3))
+        # The prompt mask arrives as an additive bias (0 or -10000 per key).
+        bias = torch.where(torch.rand(1, 1, 1, 200, generator=generator) > 0.2, 0.0, -10000.0)
+        boolean = torch.rand(1, 1, 200, 200, generator=generator) > 0.2
+        boolean[..., 0] = True
+        calls = []
+
+        def spy(q, *args, **kwargs):
+            calls.append(q.shape[-2])
+            return reference(q, *args, **kwargs)
+
+        try:
+            functional.scaled_dot_product_attention = spy
+            accelerator.bound_attention_memory(torch, budget=lambda: 3 * 200 * 4 * 25, device_types=("cpu",),
+                                               plain_types=("cpu",))
+            for mask in (None, bias):
+                plain = functional.scaled_dot_product_attention(query, key, value, attn_mask=mask)
+                self.assertTrue(torch.allclose(plain, reference(query, key, value, attn_mask=mask), atol=1e-5))
+            self.assertEqual(calls, [])
+            functional.scaled_dot_product_attention(query, key, value, attn_mask=boolean)
+            self.assertEqual(calls, [25] * 8)
+        finally:
+            functional.scaled_dot_product_attention = reference
+
 
 if __name__ == "__main__":
     unittest.main()
