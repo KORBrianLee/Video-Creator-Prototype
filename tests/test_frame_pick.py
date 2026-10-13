@@ -125,6 +125,20 @@ class ZoomKeyframeTests(unittest.TestCase):
                 self.assertGreaterEqual(len(post), 36)                # twice as wide after the zoom
                 self.assertEqual(key.getpixel((100, 97)), (240, 180, 0))
 
+    def test_the_point_travelled_toward_stays_put_off_centre_too(self):
+        from PIL import Image, ImageDraw
+        with tempfile.TemporaryDirectory() as temp:
+            source, target = Path(temp) / "s.png", Path(temp) / "k.png"
+            image = Image.new("RGB", (200, 100), (90, 90, 90))
+            ImageDraw.Draw(image).rectangle((48, 28, 51, 31), fill=(250, 250, 250))   # the hopper at (50, 30)
+            image.save(source)
+            frame_pick.zoom_keyframe(source, target, 1.5, centre=(0.25, 0.3), feather=1)
+            with Image.open(target) as key:
+                bright = [x for x in range(200) if key.getpixel((x, 30))[0] > 200]
+                self.assertIn(50, bright)
+                self.assertGreaterEqual(len(bright), 5)  # 4 px wide before, 6 after
+                self.assertTrue(all(40 < x < 60 for x in bright))
+
 
 class FillRowsTests(unittest.TestCase):
 

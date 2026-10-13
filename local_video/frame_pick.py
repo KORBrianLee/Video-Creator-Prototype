@@ -129,8 +129,8 @@ def zoom_keyframe(source, target, zoom, fixed_bottom=0.0, centre=(0.5, 0.5), fea
         opening = opening.convert("RGB")
         width, height = opening.size
         crop_w, crop_h = width / zoom, height / zoom
-        left = min(max(centre[0] * width - crop_w / 2, 0 if zoom >= 1 else width - crop_w), max(width - crop_w, 0))
-        top = min(max(centre[1] * height - crop_h / 2, 0 if zoom >= 1 else height - crop_h), max(height - crop_h, 0))
+        # `centre` stays where it is (the point the camera travels toward); everything else spreads away from it.
+        left, top = centre[0] * (width - crop_w), centre[1] * (height - crop_h)
         if zoom >= 1:
             view = opening.crop((round(left), round(top), round(left + crop_w), round(top + crop_h)))
         else:  # backing away: the opening frame shrinks inside its own blurred surroundings
