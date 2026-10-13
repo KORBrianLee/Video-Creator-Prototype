@@ -165,6 +165,13 @@ class ControllerTests(unittest.TestCase):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 control.normalize({**self.request, **bad})
 
+    def test_profile_step_is_one_denoising_step(self):
+        self.assertNotIn("profile_step", control.normalize(self.request))
+        self.assertEqual(control.normalize({**self.request, "profile_step": 1})["profile_step"], 1)
+        for bad in (0, 8, True, "1", 1.0):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                control.normalize({**self.request, "profile_step": bad})
+
     def test_decode_is_lean_unless_safe_is_asked_for(self):
         self.assertNotIn("decode", control.normalize(self.request))
         self.assertNotIn("decode", control.normalize({**self.request, "decode": "lean"}))

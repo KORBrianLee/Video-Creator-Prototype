@@ -500,6 +500,9 @@ def normalize(value):
         raise ValueError("free_boxes는 [x0, y0, x1, y1](0~1) 상자 최대 8개의 목록입니다(키프레임에 드러나지 않게 제자리에서 움직이는 대상).")
     if free_boxes and lock is None:
         raise ValueError("free_boxes는 lock_background와 함께 사용합니다.")
+    profile_step = value.get("profile_step")
+    if profile_step is not None and (isinstance(profile_step, bool) or not isinstance(profile_step, int) or not 1 <= profile_step <= 7):
+        raise ValueError("profile_step은 1~7 정수입니다(그 디노이징 단계의 시간을 가중치 올리기·행렬곱·어텐션으로 나눠 기록).")
     diagnostic = value.get("diagnostic", False)
     if not isinstance(diagnostic, bool):
         raise ValueError("diagnostic은 true 또는 false여야 합니다.")
@@ -531,6 +534,7 @@ def normalize(value):
             **({"keyframes": keyframes} if keyframes else {}),
             **({"lock_background": float(lock)} if lock is not None else {}),
             **({"free_boxes": [[float(v) for v in box] for box in free_boxes]} if free_boxes else {}),
+            **({"profile_step": profile_step} if profile_step is not None else {}),
             "model_profile": profile, "_model_spec": spec,
             "model_revision": hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest(),
             "backend": backend, "device_plan": selected, "threads": cfg["threads"],

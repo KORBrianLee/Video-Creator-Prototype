@@ -275,7 +275,9 @@ def run_stage(root, work, name, request, progress, is_cancelled):
                                                    "weights": device_record.get("weights"),
                                                    "peak_gpu_allocated_bytes": device_record.get("peak_gpu_allocated_bytes"),
                                                    "settings": device_record.get("settings"),
-                                                   "timing": device_record.get("timing"), "prompt": device_record.get("prompt")})
+                                                   "timing": device_record.get("timing"), "prompt": device_record.get("prompt"),
+                                                   **{key: device_record[key] for key in ("profile", "held_background")
+                                                      if device_record.get(key)}})
         if name == "video_infer" and request.get("device_plan", {}).get("gpu_inference"):
             ran_on, device_record = None, {}
             if (work / "torch-device.json").is_file():
@@ -492,6 +494,8 @@ def generate_project(request, output_dir, cache_dir, model_dir, progress, is_can
         from . import ltx
         long_video = ltx.settings_for(duration, request.get("preset", "preview"), request.get("aspect", "16:10"),
                                       request.get("text_tokens", 128), request.get("decode", "lean"))
+        if request.get("profile_step"):
+            long_video["profile_step"] = int(request["profile_step"])
         if request.get("anchor_end"):
             long_video["anchor_end"] = float(request["anchor_end"])
             if request.get("anchor_end_image"):

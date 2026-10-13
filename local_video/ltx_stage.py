@@ -118,6 +118,77 @@ def cpu_video_coords(pipe):
     return pipe
 
 
+class StepProfile:
+    """Where one denoising step goes: uploading and widening the streamed BF16 weights, the matrix products and
+    attention; the remainder is norms, rotary tables, the scheduler and Python. Each part is bracketed by GPU
+    synchronisation (a little extra time of its own), and only the chosen step is measured."""
+
+    def __init__(self, torch, gpu, step):
+        from local_video import neodragon_quant
+        self.step, self.gpu, self.on, self.started = step, gpu, False, None
+        self.totals = {"widen": 0.0, "matmul": 0.0, "attention": 0.0, "linear_calls": 0, "attention_calls": 0}
+        linear, functional = neodragon_quant.MappedLinearTorchGPU, torch.nn.functional
+        streamed_forward, attention = linear.forward, functional.scaled_dot_product_attention
+        profile = self
+
+        def forward(module, value):
+            if not profile.on:
+                return streamed_forward(module, value)
+            device, bitwise = value.device, module.bitwise_for(value.device)
+            profile.sync()
+            begin = time.perf_counter()
+            if module.stored is not None:
+                weight, bias = module.widen_stored(module.stored, module.weight.shape, bitwise), module.stored_bias
+            else:
+                weight = module.widen(module.weight, device, bitwise)
+                bias = module.bias.detach().float().to(device) if module.bias is not None else None
+            profile.sync()
+            widened = time.perf_counter()
+            out = functional.linear(value.float(), weight, bias)
+            profile.sync()
+            profile.add("widen", widened - begin, "matmul", time.perf_counter() - widened, "linear_calls")
+            return out
+
+        def timed_attention(*args, **kwargs):
+            if not profile.on:
+                return attention(*args, **kwargs)
+            profile.sync()
+            begin = time.perf_counter()
+            out = attention(*args, **kwargs)
+            profile.sync()
+            profile.add("attention", time.perf_counter() - begin, None, 0.0, "attention_calls")
+            return out
+
+        timed_attention._memory_bounded = True
+        linear.forward = forward
+        functional.scaled_dot_product_attention = timed_attention
+
+    def sync(self):
+        if hasattr(self.gpu, "synchronize"):
+            self.gpu.synchronize()
+
+    def add(self, first, first_seconds, second, second_seconds, counter):
+        self.totals[first] += first_seconds
+        if second:
+            self.totals[second] += second_seconds
+        self.totals[counter] += 1
+
+    def step_end(self, index, now):
+        if index == self.step - 1:
+            self.on, self.started = True, now
+        elif index == self.step and self.on:
+            self.on, self.totals["step"] = False, now - self.started
+
+    def record(self):
+        totals = self.totals
+        if "step" not in totals:
+            return None
+        parts = {key: round(totals[key], 1) for key in ("widen", "matmul", "attention")}
+        return {"step": self.step, "seconds": round(totals["step"], 1), **parts,
+                "other": round(totals["step"] - sum(totals[key] for key in parts), 1),
+                "linear_calls": totals["linear_calls"], "attention_calls": totals["attention_calls"]}
+
+
 def hold_background(pipe, cells, strength, latent_frames, torch):
     """Locked camera: in every latent frame after the first, the held cells start from the opening frame kept still
     (encoded as a short still clip) and carry `strength` as their conditioning level, so the transformer treats them
@@ -312,6 +383,7 @@ def render(torch, device, root, first_frame, settings, prompt_embeds, mask, seed
     configs = folder / "config-0.9.5"
     accelerator.bound_attention_memory(torch, discrete=discrete)
     gpu = getattr(torch, device.type)
+    profile = StepProfile(torch, gpu, int(settings["profile_step"])) if settings.get("profile_step") else None
     transformer = LTXVideoTransformer3DModel.from_single_file(str(checkpoint), config=str(configs), subfolder="transformer",
                                                               torch_dtype=torch.bfloat16, local_files_only=True).eval()
     resident = accelerator.weights_resident(linear_weight_bytes(transformer), discrete, accelerator.vram_free_bytes(torch, device))
@@ -382,6 +454,8 @@ def render(torch, device, root, first_frame, settings, prompt_embeds, mask, seed
         if hasattr(gpu, "synchronize"):
             gpu.synchronize()
         step_ends.append(time.monotonic())
+        if profile:
+            profile.step_end(index, step_ends[-1])
         return tensors
 
     pipe_start = time.monotonic()
@@ -398,7 +472,8 @@ def render(torch, device, root, first_frame, settings, prompt_embeds, mask, seed
         raise RuntimeError(f"LTX returned {len(frames)} frames, expected {settings['frames']}")
     return frames, {"weights": "resident" if resident else "streamed", "peak_gpu_allocated_bytes": gpu.max_memory_allocated(),
                     "anchor_end": anchor, "timing": timing_record(load_start, pipe_start, step_ends, pipe_end),
-                    **({"held_background": held} if held else {})}
+                    **({"held_background": held} if held else {}),
+                    **({"profile": profile.record()} if profile and profile.record() else {})}
 
 
 if __name__ == "__main__":

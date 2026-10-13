@@ -228,6 +228,10 @@ def job_digest(job_id, with_signals=True):
         timing, notes = long_video_notes(shot.get("phases", []))
         if timing:
             digest["timing"] = timing
+        for phase in shot.get("phases", []):
+            for key in ("profile", "held_background"):
+                if (phase.get("gpu") or {}).get(key):
+                    digest[key] = phase["gpu"][key]
         digest["safety_unsafe"] = (shot.get("safety") or {}).get("unsafe")
         continuity = (shot.get("verification") or {}).get("continuity") or {}
         digest["continuity"] = continuity.get("state")
