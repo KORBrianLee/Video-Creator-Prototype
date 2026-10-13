@@ -46,7 +46,8 @@ Cursor에서 설치된 `app` 폴더를 열고 `local-video` MCP를 사용한다.
 | 컴퓨터 | 모델 | 15초 |
 |---|---|---|
 | NVIDIA GPU(VRAM 8GB 이상) + 장시간 모델 설치 | SkyReels-V2 DF 1.3B (Diffusion Forcing, Wan 계열) | 377프레임, 24fps. 해상도와 블록 길이는 VRAM에 맞춘다(8GB 672×384 … 20GB 이상 960×544) |
-| 그 외(그램 등 Intel 내장 GPU, AMD, CPU) | Neo | 361프레임, 24fps, 384×256 |
+| Intel GPU(그램의 Iris Xe, Arc; PyTorch XPU) | LTX-Video 2B 0.9.8 distilled | 361프레임, 24fps, 512×320(16:10) 또는 512×288(16:9). 그램에서 약 40분 이상 |
+| 그 외(AMD, CPU) | Neo | 361프레임, 24fps, 384×256 |
 
 SkyReels는 블록마다 앞 블록의 끝 17프레임을 겹쳐 보며 생성하는 모델이라 긴 영상이 한 번에 이어진다. 설치기는 NVIDIA GPU가 감지된 PC에만 이 모델을 받는다. 원본은 FP32 27GB인데, 파일마다 해시를 확인하고 바로 BF16으로 바꿔 최종 약 15GB만 남긴다(받는 중 추가 여유 약 5GB 필요, 중단되면 이어서 받음). UMT5 텍스트 인코더는 VRAM이 28GB 이상일 때만 GPU에 두고, 그 밖에는 프롬프트당 한 번 CPU에서 실행한다. SkyReels가 실패하면(예: VRAM 부족) 같은 작업을 Neo로 다시 만들고, 1시간 동안 SkyReels를 쓰지 않는다. `video_doctor`의 `accelerator`에 `video_model`, `model_tier_reason`, `maximum_duration_seconds`가 나온다. 라이선스는 [Skywork Community License](docs/licenses/SkyReels-V2-Skywork-LICENSE.txt)이며 그 조건 안에서 상업적 사용도 허용된다.
 
@@ -54,7 +55,7 @@ SkyReels 경로는 이 개발 PC(Intel 내장 GPU)에서 실제로 실행하지 
 
 **Neo는 8초까지만 정식 생성한다.** 그램(Iris Xe, XPU)에서 15초(361프레임)를 실측한 결과 영상 추론 1,237초·해독 70초였고, 장면이 약 5초까지 유지되다가 7.5초 무렵부터 어두워져 끝은 파란 잡음과 검은 화면이 되었다. 안전 검사기도 이 프레임들을 거부했다. 그래서 Neo만 쓰는 컴퓨터는 10/15초를 `diagnostic=true` 시험으로만 받고, 정식 요청은 제출 단계에서 사유와 함께 거절한다. `video_doctor`의 `maximum_duration_seconds`가 Neo 컴퓨터에서 8, 장시간 모델 컴퓨터에서 15로 표시된다. 라이선스가 있는 참고 화면을 쓰면 결과의 `ATTRIBUTION.md`를 함께 유지한다. 안전 검사에서 거부된 영상은 정상 완료로 내보내지 않는다.
 
-현재 모델은 저메모리 실행을 구현한 Neo다. 완벽한 최적 모델로 확정하지 않았다. LTX-Video 2B distilled/OpenVINO는 품질 비교 후보이며 아직 통합·그램 검증을 하지 않았다. Wan 1.3B Q4는 별도 진단 경로이고 큰 텍스트 인코더와 해독 RAM 때문에 그램 기본에서 제외한다. [후보와 이용자 보고](docs/LOW_RESOURCE_GPU.md), [기존 비교 조사](docs/MODEL_SELECTION.md)를 참고한다.
+Intel GPU에서는 LTX-Video 2B 0.9.8 distilled(8단계, 가이던스 없음)를 자동으로 쓴다. 그램(Iris Xe)의 15초 한 편은 텍스트 인코딩·가중치 적재 약 6분, 디노이징 단계당 약 2.5~4분 × 8, VAE 디코딩 10분 이상이다(결과 요약의 `timing`에 단계별 초가 남는다). 16:9 첫 화면은 `aspect="16:9"`(512×288)로 찌그러짐 없이 만들고 `video.cmd import --aspect 16:9`로 가져온다. LTX는 프롬프트를 128토큰(약 90단어)까지만 읽고 나머지를 잘라 내며, 잘리면 결과 요약에 `prompt_truncated`가 나온다. `text_tokens=256`이면 약 180단어까지 읽는다. 고정 카메라 장면은 `anchor_end=0.5`로 구도를 묶고, 움직이는 장비에 달린 카메라는 묶지 않는다. `decode="lean"`은 VAE의 중복 디코딩을 약 절반으로 줄이는 시험 설정이며 검증 전까지 기본은 `safe`다. LTX 가중치의 매출 조건은 [이용·재배포 조건](docs/MODEL_LICENSES.md)을 따른다. Wan 1.3B Q4는 별도 진단 경로이고 큰 텍스트 인코더와 해독 RAM 때문에 그램 기본에서 제외한다. [후보와 이용자 보고](docs/LOW_RESOURCE_GPU.md), [기존 비교 조사](docs/MODEL_SELECTION.md)를 참고한다.
 
 `video.config.json`의 `backend`는 `auto`, `gpu`, `intel-gpu`, `cpu`를 지원하며 Wan 전용 기존 `intel-vulkan`도 유지한다. 참고 이미지·캐시·임시 파일·모델·출력은 선택한 전용 실행 폴더 안에 둔다. 기존 D 환경과 원본 USB 아카이브는 보존했다. [포터블 구성](docs/PORTABLE.md).
 
