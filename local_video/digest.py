@@ -144,6 +144,49 @@ def review_strip(video, target, box=(0.0, 0.0, 1.0, 1.0), start=0.0, end=None, c
     return {"path": str(target), "seconds": [round(i / fps, 1) for i in indices[:len(tiles)]]}
 
 
+def compare_strips(videos, target, box=(0.0, 0.0, 1.0, 1.0), seconds=(0.0, 1.0, 2.0, 3.0), width=320, height=None):
+    """One image comparing clips of the same scene made different ways: a row per clip with the same box (0-1 units,
+    so clips of different resolution line up) at the same seconds, every tile scaled to one size."""
+    import imageio_ffmpeg
+    from PIL import Image, ImageDraw
+    target = Path(target)
+    rows = []
+    for video in map(Path, videos):
+        total, length = imageio_ffmpeg.count_frames_and_secs(str(video))
+        fps = total / length if length else 24
+        indices = [min(total - 1, max(0, round(s * fps))) for s in seconds]
+        folder = Path(tempfile.mkdtemp(prefix="compare-", dir=target.parent))
+        try:
+            flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+            select = "+".join(f"eq(n\\,{i})" for i in sorted(set(indices)))
+            subprocess.run([imageio_ffmpeg.get_ffmpeg_exe(), "-nostdin", "-v", "error", "-i", str(video),
+                            "-vf", f"select='{select}'", "-vsync", "0", str(folder / "c%03d.png")],
+                           capture_output=True, timeout=300, creationflags=flags)
+            frames = {}
+            for index, path in zip(sorted(set(indices)), sorted(folder.glob("c*.png"))):
+                with Image.open(path) as image:
+                    w, h = image.size
+                    frames[index] = image.convert("RGB").crop((round(box[0] * w), round(box[1] * h),
+                                                              round(box[2] * w), round(box[3] * h)))
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
+        rows.append((video, [frames.get(i) for i in indices]))
+    first = next(tile for _, tiles in rows for tile in tiles if tile is not None)
+    height = height or max(1, round(first.height * width / first.width))
+    label = 14
+    sheet = Image.new("RGB", (len(seconds) * width, len(rows) * (height + label)), "black")
+    draw = ImageDraw.Draw(sheet)
+    for r, (video, tiles) in enumerate(rows):
+        y = r * (height + label)
+        name = video.parent.parent.name if video.name == "video.mp4" else video.stem
+        for c, tile in enumerate(tiles):
+            if tile is not None:
+                sheet.paste(tile.resize((width, height), Image.LANCZOS), (c * width, y + label))
+            draw.text((c * width + 4, y + 1), f"{name} {seconds[c]:.1f}s", fill="white")
+    sheet.save(target, quality=90)
+    return {"path": str(target), "rows": [str(video) for video, _ in rows]}
+
+
 def count_frames(video):
     import imageio_ffmpeg
     try:

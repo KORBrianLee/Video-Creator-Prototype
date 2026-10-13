@@ -146,17 +146,27 @@ class ReviewStripTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.work = Path(self.temporary.name)
 
-    def video(self):
+    def video(self, width=64, height=36, name="clip"):
         from PIL import Image, ImageDraw
         from local_video import backend
+        folder = self.work / name
+        folder.mkdir()
         for index in range(48):
-            frame = Image.new("RGB", (64, 36), (20, 40, 80))
+            frame = Image.new("RGB", (width, height), (20, 40, 80))
             ImageDraw.Draw(frame).rectangle((index, 10, index + 8, 26), fill=(230, 200, 120))
-            frame.save(self.work / f"frame_{index:03d}.png")
-        video = self.work / "clip.mp4"
-        backend._encode_frames(self.work, video, {"width": 64, "height": 36, "frames": 48, "fps": 24, "steps": 4},
+            frame.save(folder / f"frame_{index:03d}.png")
+        video = folder / f"{name}.mp4"
+        backend._encode_frames(folder, video, {"width": width, "height": height, "frames": 48, "fps": 24, "steps": 4},
                                lambda: False)
         return video
+
+    def test_clips_of_different_sizes_line_up_row_by_row(self):
+        from PIL import Image
+        small, large = self.video(), self.video(128, 72, "large")
+        result = digest.compare_strips([small, large], self.work / "compare.jpg", seconds=(0.5, 1.5))
+        self.assertEqual(len(result["rows"]), 2)
+        with Image.open(result["path"]) as sheet:
+            self.assertEqual(sheet.size, (2 * 320, 2 * (180 + 14)))
 
     def test_frames_across_the_span_are_tiled_with_their_seconds(self):
         from PIL import Image
