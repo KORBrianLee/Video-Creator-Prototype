@@ -31,6 +31,8 @@ def main():
     frames.add_argument("spec_file", type=Path)
     imports = sub.add_parser("import", help="외부에서 만든 첫 프레임(예: GenerateImage, C 저장)을 실행 폴더로 옮기고 원본 삭제")
     imports.add_argument("images", type=Path, nargs="+")
+    imports.add_argument("--aspect", choices=["16:10", "16:9"], default="16:10", help="잘라 맞출 화면비(16:9는 LTX aspect 16:9 요청용)")
+    imports.add_argument("--keep", action="store_true", help="원본을 지우지 않음(다른 사람이 전달한 이미지)")
     compose = sub.add_parser("compose-end", help="끝 키프레임의 고정 영역을 시작 프레임에서 복사(카메라 흔들림 방지)")
     compose.add_argument("start", type=Path)
     compose.add_argument("end", type=Path)
@@ -76,7 +78,8 @@ def main():
             result = pick_frames(args.spec_file)
         elif args.action == "import":
             from local_video.frame_pick import import_frames
-            result = import_frames(args.images, control.load_config()[1])
+            from local_video.frame_pick import IMPORT_SIZES
+            result = import_frames(args.images, control.load_config()[1], IMPORT_SIZES[args.aspect], args.keep)
         elif args.action == "compose-end":
             from local_video.frame_pick import compose_keyframe
             boxes = [tuple(float(v) for v in box.split(",")) for box in args.keep]

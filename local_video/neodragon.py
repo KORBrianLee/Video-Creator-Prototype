@@ -482,12 +482,14 @@ def generate_project(request, output_dir, cache_dir, model_dir, progress, is_can
         raise ValueError(f"이 컴퓨터는 Neo 모델을 사용합니다. Neo는 약 7초 이후 화면이 무너져(15초 실측) {NEO_VERIFIED_SECONDS}초까지만 정식 생성합니다. "
                          f"{duration}초는 NVIDIA GPU(VRAM 8GB 이상)의 장시간 모델에서 생성하거나 diagnostic=true 시험으로만 요청하세요. "
                          f"사유: {choice.get('model_tier_reason') or choice.get('reason') or 'NVIDIA GPU 없음'}")
+    if request.get("aspect", "16:10") != "16:10" and selected["model_tier"] != "ltx":
+        raise ValueError(f"aspect {request['aspect']}는 LTX 계층(Intel GPU)에서만 지원합니다. 이 작업의 모델: {selected['model_tier']}")
     if selected["model_tier"] == "skyreels":
         from . import skyreels
         long_video = skyreels.settings_for(choice.get("total_memory_bytes"), duration, request.get("preset", "preview"))
     elif selected["model_tier"] == "ltx":
         from . import ltx
-        long_video = ltx.settings_for(duration, request.get("preset", "preview"))
+        long_video = ltx.settings_for(duration, request.get("preset", "preview"), request.get("aspect", "16:10"))
         if request.get("anchor_end"):
             long_video["anchor_end"] = float(request["anchor_end"])
             if request.get("anchor_end_image"):

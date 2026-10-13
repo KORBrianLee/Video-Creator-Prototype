@@ -157,6 +157,16 @@ class LtxTests(unittest.TestCase):
         self.assertEqual(len(settings["timesteps"]), 8)
         self.assertEqual(settings["guidance_scale"], 1.0)
 
+    def test_widescreen_keeps_16_9_first_frames_unsqueezed(self):
+        from local_video import ltx
+        for preset, size in (("preview", (512, 288)), ("quality", (1024, 576))):
+            settings = ltx.settings_for(15, preset, "16:9")
+            self.assertEqual((settings["width"], settings["height"]), size)
+            self.assertEqual((settings["width"] % 32, settings["height"] % 32), (0, 0))
+            self.assertAlmostEqual(settings["width"] / settings["height"], 16 / 9, places=2)
+            self.assertEqual(settings["frames"], 361)
+        self.assertEqual((ltx.settings_for(8)["width"], ltx.settings_for(8)["height"]), (512, 320))
+
     def test_lock_and_install_only_for_intel_gpus(self):
         lock = json.loads((installer.SOURCE / "ltx.lock.json").read_text(encoding="utf-8"))
         self.assertTrue(all(len(item["sha256"]) == 64 for item in lock["files"]))

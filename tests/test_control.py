@@ -143,6 +143,14 @@ class ControllerTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 control.normalize({**self.request, "anchor_end": bad})
 
+    def test_aspect_is_16_10_unless_widescreen_is_asked_for(self):
+        self.assertNotIn("aspect", control.normalize(self.request))
+        self.assertEqual(control.normalize({**self.request, "aspect": "16:9"})["aspect"], "16:9")
+        self.assertNotEqual(self.digest({**self.request, "aspect": "16:9"}), self.digest())
+        for bad in ("4:3", "16x9", 1.78):
+            with self.assertRaises(ValueError):
+                control.normalize({**self.request, "aspect": bad})
+
     def test_anchor_end_image_needs_anchor_and_a_runtime_path(self):
         image = self.root / "end.png"
         image.write_bytes(b"png")

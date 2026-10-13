@@ -63,6 +63,18 @@ class ImportFramesTests(unittest.TestCase):
             with Image.open(target) as image:
                 self.assertEqual(image.size, (160, 100))
 
+    def test_handed_over_pictures_are_kept_and_widescreen_is_not_cropped(self):
+        from PIL import Image
+        with tempfile.TemporaryDirectory() as temp:
+            outside, root = Path(temp) / "outside", Path(temp) / "runtime"
+            outside.mkdir()
+            source = outside / "01_first.png"
+            Image.new("RGB", (1672, 941), (10, 20, 30)).save(source)
+            result = frame_pick.import_frames([source], root, frame_pick.IMPORT_SIZES["16:9"], keep=True)["imported"][0]
+            self.assertTrue(source.exists())
+            with Image.open(result["path"]) as image:
+                self.assertEqual(image.size, (1024, 576))
+
 
 class ComposeKeyframeTests(unittest.TestCase):
     def test_kept_region_comes_from_the_start_frame(self):

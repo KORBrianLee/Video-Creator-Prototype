@@ -449,6 +449,9 @@ def normalize(value):
     cond_noise = value.get("cond_noise")
     if cond_noise is not None and (isinstance(cond_noise, bool) or not isinstance(cond_noise, (int, float)) or not 0 <= cond_noise <= 1):
         raise ValueError("cond_noise는 0~1 사이 수입니다(키프레임 조건에 섞는 노이즈, 기본 0.15).")
+    aspect = value.get("aspect", "16:10")
+    if aspect not in ("16:10", "16:9"):
+        raise ValueError("aspect는 16:10(기본) 또는 16:9입니다. 16:9는 LTX 계층에서 512x288(quality 1024x576)로 만든다.")
     keyframes = []
     raw_keyframes = value.get("keyframes", [])
     if not isinstance(raw_keyframes, list) or len(raw_keyframes) > 4:
@@ -504,6 +507,7 @@ def normalize(value):
             **({"anchor_end": float(anchor_end)} if anchor_end is not None else {}),
             **({"anchor_end_image": anchor_end_image} if anchor_end_image else {}),
             **({"cond_noise": float(cond_noise)} if cond_noise is not None else {}),
+            **({"aspect": aspect} if aspect != "16:10" else {}),
             **({"keyframes": keyframes} if keyframes else {}),
             "model_profile": profile, "_model_spec": spec,
             "model_revision": hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest(),

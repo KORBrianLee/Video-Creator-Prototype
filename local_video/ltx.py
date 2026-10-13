@@ -12,8 +12,15 @@ LOCK = "ltx.lock.json"
 TIMESTEPS = [1000, 993, 987, 981, 975, 909, 725, 0.03]
 
 
-def settings_for(duration, preset="preview"):
-    width, height = (768, 448) if preset == "quality" else (512, 320)
+# Both sides are multiples of 32 (the VAE's spatial factor). 16:9 matches widescreen first frames without
+# squeezing them, and 512x288 has 10% fewer tokens than 512x320. The next exact 16:9 size is 1024x576,
+# four times the tokens: short clips only on an integrated GPU.
+SIZES = {("16:10", "preview"): (512, 320), ("16:10", "quality"): (768, 448),
+         ("16:9", "preview"): (512, 288), ("16:9", "quality"): (1024, 576)}
+
+
+def settings_for(duration, preset="preview", aspect="16:10"):
+    width, height = SIZES[(aspect, "quality" if preset == "quality" else "preview")]
     return {"width": width, "height": height, "frames": int(duration) * 24 + 1, "fps": 24,
             "timesteps": TIMESTEPS, "guidance_scale": 1.0, "decode_timestep": 0.05, "decode_noise_scale": 0.025,
             "max_sequence_length": 128}
