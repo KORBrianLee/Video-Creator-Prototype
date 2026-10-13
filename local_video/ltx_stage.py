@@ -272,10 +272,9 @@ def render(torch, device, root, first_frame, settings, prompt_embeds, mask, seed
     float_non_linear_parameters(vae, device)
     fp32_dtype(vae, torch)
     if hasattr(vae, "enable_tiling"):
-        # Small spatial tiles plus 16-frame temporal chunks: one whole-clip decode dispatch outlasts the
-        # Windows GPU watchdog on Iris Xe (UR_RESULT_ERROR_DEVICE_LOST at 97 frames).
-        vae.enable_tiling(tile_sample_min_height=256, tile_sample_min_width=256, tile_sample_min_num_frames=16,
-                          tile_sample_stride_height=192, tile_sample_stride_width=192, tile_sample_stride_num_frames=8)
+        # Tiled spatially and in time: one whole-clip decode dispatch outlasts the Windows GPU watchdog on
+        # Iris Xe (UR_RESULT_ERROR_DEVICE_LOST at 97 frames). See ltx.vae_tiling.
+        vae.enable_tiling(**(settings.get("vae_tiling") or ltx.vae_tiling(settings["height"])))
         vae.use_framewise_decoding = True
         cpu_decoded_tiles(vae, torch)
     scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(configs / "scheduler", local_files_only=True)

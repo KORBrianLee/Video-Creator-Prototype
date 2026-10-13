@@ -455,6 +455,9 @@ def normalize(value):
     text_tokens = value.get("text_tokens", 128)
     if isinstance(text_tokens, bool) or text_tokens not in (128, 256):
         raise ValueError("text_tokens는 128(기본, 약 90단어) 또는 256(약 180단어)입니다. LTX가 읽는 프롬프트 길이다.")
+    decode = value.get("decode", "safe")
+    if decode not in ("safe", "lean"):
+        raise ValueError("decode는 safe(기본, 15초 검증된 VAE 타일) 또는 lean(중복 디코딩을 약 절반으로 줄인 큰 타일)입니다.")
     keyframes = []
     raw_keyframes = value.get("keyframes", [])
     if not isinstance(raw_keyframes, list) or len(raw_keyframes) > 4:
@@ -512,6 +515,7 @@ def normalize(value):
             **({"cond_noise": float(cond_noise)} if cond_noise is not None else {}),
             **({"aspect": aspect} if aspect != "16:10" else {}),
             **({"text_tokens": int(text_tokens)} if text_tokens != 128 else {}),
+            **({"decode": decode} if decode != "safe" else {}),
             **({"keyframes": keyframes} if keyframes else {}),
             "model_profile": profile, "_model_spec": spec,
             "model_revision": hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest(),

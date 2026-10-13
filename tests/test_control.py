@@ -151,6 +151,12 @@ class ControllerTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 control.normalize({**self.request, "aspect": bad})
 
+    def test_decode_is_safe_unless_lean_is_asked_for(self):
+        self.assertNotIn("decode", control.normalize(self.request))
+        self.assertEqual(control.normalize({**self.request, "decode": "lean"})["decode"], "lean")
+        with self.assertRaises(ValueError):
+            control.normalize({**self.request, "decode": "fast"})
+
     def test_text_tokens_are_128_unless_256_is_asked_for(self):
         self.assertNotIn("text_tokens", control.normalize(self.request))
         self.assertEqual(control.normalize({**self.request, "text_tokens": 256})["text_tokens"], 256)
