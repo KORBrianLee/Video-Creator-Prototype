@@ -33,6 +33,44 @@ def vae_tiling(height, decode="lean"):
             "tile_sample_stride_height": 192, "tile_sample_stride_width": 192, "tile_sample_stride_num_frames": 8}
 
 
+LATENT_CELL = 32  # pixels per latent cell (VAE spatial compression)
+
+
+def background_cells(first, others, width, height, free_boxes=(), threshold=3.0, margin=1):
+    """Latent cells (height//32 rows of width//32, 1 = hold) that look the same in the opening frame and in every
+    keyframe: the still background of a locked camera. Cells that change between them, cells touching `free_boxes`
+    (0-1 units: subjects that move in place without a keyframe showing it) and a `margin` of cells around both stay
+    free to move."""
+    from PIL import Image, ImageChops, ImageStat
+    rows, cols = height // LATENT_CELL, width // LATENT_CELL
+    with Image.open(first) as image:
+        base = image.convert("L").resize((width, height))
+    moving = set()
+    for path in others:
+        with Image.open(path) as image:
+            diff = ImageChops.difference(base, image.convert("L").resize((width, height)))
+        for r in range(rows):
+            for c in range(cols):
+                cell = (c * LATENT_CELL, r * LATENT_CELL, (c + 1) * LATENT_CELL, (r + 1) * LATENT_CELL)
+                if ImageStat.Stat(diff.crop(cell)).mean[0] > threshold:
+                    moving.add((r, c))
+    for x0, y0, x1, y1 in free_boxes:
+        moving.update((r, c) for r in range(rows) for c in range(cols)
+                      if c * LATENT_CELL < x1 * width and (c + 1) * LATENT_CELL > x0 * width
+                      and r * LATENT_CELL < y1 * height and (r + 1) * LATENT_CELL > y0 * height)
+    near = range(-margin, margin + 1)
+    return [[0 if any((r + dr, c + dc) in moving for dr in near for dc in near) else 1 for c in range(cols)]
+            for r in range(rows)]
+
+
+def held_tokens(cells, latent_frames):
+    """Packed token positions (frame-major, then rows, then columns) of the held cells in every latent frame after
+    the first, which the opening-frame condition already holds."""
+    rows, cols = len(cells), len(cells[0])
+    per_frame = [r * cols + c for r in range(rows) for c in range(cols) if cells[r][c]]
+    return [f * rows * cols + i for f in range(1, latent_frames) for i in per_frame]
+
+
 # Prompt tokens the T5 encoder reads: 128 is the diffusers default (about 90 words, the rest is cut off);
 # the official LTX-Video pipeline encodes up to 256 (about 180 words).
 def settings_for(duration, preset="preview", aspect="16:10", text_tokens=128, decode="lean"):

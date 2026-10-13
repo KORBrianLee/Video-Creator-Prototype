@@ -151,6 +151,20 @@ class ControllerTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 control.normalize({**self.request, "aspect": bad})
 
+    def test_background_lock_needs_keyframes_and_takes_free_boxes(self):
+        self.assertNotIn("lock_background", control.normalize(self.request))
+        locked = control.normalize({**self.request, "anchor_end": 0.9, "lock_background": 0.95,
+                                    "free_boxes": [[0.1, 0.2, 0.3, 0.4]]})
+        self.assertEqual((locked["lock_background"], locked["free_boxes"]), (0.95, [[0.1, 0.2, 0.3, 0.4]]))
+        for bad in [{"lock_background": 0.9},
+                    {"anchor_end": 0.9, "lock_background": 0},
+                    {"anchor_end": 0.9, "lock_background": True},
+                    {"anchor_end": 0.9, "free_boxes": [[0.1, 0.2, 0.3, 0.4]]},
+                    {"anchor_end": 0.9, "lock_background": 1.0, "free_boxes": [[0.3, 0.2, 0.1, 0.4]]},
+                    {"anchor_end": 0.9, "lock_background": 1.0, "free_boxes": [[0.1, 0.2, 0.3]]}]:
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                control.normalize({**self.request, **bad})
+
     def test_decode_is_lean_unless_safe_is_asked_for(self):
         self.assertNotIn("decode", control.normalize(self.request))
         self.assertNotIn("decode", control.normalize({**self.request, "decode": "lean"}))

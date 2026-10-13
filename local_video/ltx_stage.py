@@ -118,6 +118,40 @@ def cpu_video_coords(pipe):
     return pipe
 
 
+def hold_background(pipe, cells, strength, latent_frames, torch):
+    """Locked camera: in every latent frame after the first, the held cells start from the opening frame kept still
+    (encoded as a short still clip) and carry `strength` as their conditioning level, so the transformer treats them
+    like the first-frame condition and the framing has nothing to drift with. Token edits run on the CPU (integer
+    indexing on Iris Xe is not trusted)."""
+    from diffusers.pipelines.ltx.pipeline_ltx_condition import retrieve_latents
+    prepare = pipe.prepare_latents
+    positions = ltx.held_tokens(cells, latent_frames)
+
+    def prepare_latents(conditions, *args, **kwargs):
+        latents, mask, coords, extra = prepare(conditions, *args, **kwargs)
+        if not positions:
+            return latents, mask, coords, extra
+        still = conditions[0].repeat(1, 1, 17, 1, 1)
+        held = retrieve_latents(pipe.vae.encode(still), sample_mode="argmax")
+        held = pipe._normalize_latents(held, pipe.vae.latents_mean, pipe.vae.latents_std).float().cpu()
+        packed = pipe._pack_latents(held[:, :, -1:].repeat(1, 1, latent_frames, 1, 1), 1, 1)
+        index = torch.tensor(positions, dtype=torch.long)
+        tokens, levels = latents.float().cpu(), mask.float().cpu()
+        tokens[:, extra + index] = torch.lerp(tokens[:, extra + index], packed[:, index], strength)
+        levels[:, extra + index] = torch.clamp(levels[:, extra + index], min=strength)
+        import gc
+        gc.collect()
+        module = getattr(torch, latents.device.type, None)
+        if module is not None and hasattr(module, "empty_cache"):
+            module.synchronize()
+            module.empty_cache()
+        return tokens.to(latents.device, latents.dtype), levels.to(mask.device, mask.dtype), coords, extra
+
+    pipe.prepare_latents = prepare_latents
+    rows, cols = len(cells), len(cells[0])
+    return {"cells": sum(map(sum, cells)), "of": rows * cols, "strength": strength}
+
+
 def cpu_scheduler_step(scheduler):
     """Per-token keyframe steps multiply a bool mask by sigmas, a cast Iris Xe cannot run.
 
@@ -303,6 +337,7 @@ def render(torch, device, root, first_frame, settings, prompt_embeds, mask, seed
     fixed_schedule(scheduler, settings["timesteps"], torch)
     image = Image.open(first_frame).convert("RGB").resize((settings["width"], settings["height"]))
     anchor = settings.get("anchor_end")
+    held = None
     if anchor:
         # The first frame is also a keyframe near the end, so camera and cast must return to the opening
         # composition within one generation (no clip joining).
@@ -327,6 +362,13 @@ def render(torch, device, root, first_frame, settings, prompt_embeds, mask, seed
                 image=Image.open(key_path).convert("RGB").resize((settings["width"], settings["height"])),
                 frame_index=min(frame, last - 8), strength=float(key["strength"])))
         conditions.append(LTXVideoCondition(image=end, frame_index=last, strength=float(anchor)))
+        if settings.get("lock_background"):
+            lock = settings["lock_background"]
+            others = [key["path"] for key in settings.get("keyframes", [])]
+            others += [settings["anchor_end_image"]["path"]] if settings.get("anchor_end_image") else []
+            cells = ltx.background_cells(first_frame, others, settings["width"], settings["height"],
+                                         lock.get("free_boxes", ()))
+            held = hold_background(pipe, cells, float(lock["strength"]), (settings["frames"] - 1) // 8 + 1, torch)
         inputs = {"conditions": conditions,
                   "image_cond_noise_scale": float(settings.get("image_cond_noise_scale", 0.15))}
     else:
@@ -355,7 +397,8 @@ def render(torch, device, root, first_frame, settings, prompt_embeds, mask, seed
     if len(frames) != settings["frames"]:
         raise RuntimeError(f"LTX returned {len(frames)} frames, expected {settings['frames']}")
     return frames, {"weights": "resident" if resident else "streamed", "peak_gpu_allocated_bytes": gpu.max_memory_allocated(),
-                    "anchor_end": anchor, "timing": timing_record(load_start, pipe_start, step_ends, pipe_end)}
+                    "anchor_end": anchor, "timing": timing_record(load_start, pipe_start, step_ends, pipe_end),
+                    **({"held_background": held} if held else {})}
 
 
 if __name__ == "__main__":

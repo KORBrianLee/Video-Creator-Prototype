@@ -488,6 +488,18 @@ def normalize(value):
         end_image = end_image.resolve(strict=True)
         with end_image.open("rb") as stream:
             anchor_end_image = {"path": str(end_image), "sha256": hashlib.file_digest(stream, "sha256").hexdigest()}
+    lock = value.get("lock_background")
+    if lock is not None and (isinstance(lock, bool) or not isinstance(lock, (int, float)) or not 0 < lock <= 1):
+        raise ValueError("lock_background는 0보다 크고 1 이하인 수입니다(고정 카메라에서 정지 배경을 첫 화면에 묶는 강도).")
+    if lock is not None and anchor_end is None:
+        raise ValueError("lock_background는 anchor_end(키프레임)와 함께 사용합니다. 움직이는 칸은 키프레임 차이로 정합니다.")
+    free_boxes = value.get("free_boxes", [])
+    valid_box = lambda box: (isinstance(box, list) and len(box) == 4 and box[0] < box[2] and box[1] < box[3]
+                             and all(isinstance(v, (int, float)) and not isinstance(v, bool) and 0 <= v <= 1 for v in box))
+    if not isinstance(free_boxes, list) or len(free_boxes) > 8 or not all(valid_box(box) for box in free_boxes):
+        raise ValueError("free_boxes는 [x0, y0, x1, y1](0~1) 상자 최대 8개의 목록입니다(키프레임에 드러나지 않게 제자리에서 움직이는 대상).")
+    if free_boxes and lock is None:
+        raise ValueError("free_boxes는 lock_background와 함께 사용합니다.")
     diagnostic = value.get("diagnostic", False)
     if not isinstance(diagnostic, bool):
         raise ValueError("diagnostic은 true 또는 false여야 합니다.")
@@ -517,6 +529,8 @@ def normalize(value):
             **({"text_tokens": int(text_tokens)} if text_tokens != 128 else {}),
             **({"decode": decode} if decode != "lean" else {}),
             **({"keyframes": keyframes} if keyframes else {}),
+            **({"lock_background": float(lock)} if lock is not None else {}),
+            **({"free_boxes": [[float(v) for v in box] for box in free_boxes]} if free_boxes else {}),
             "model_profile": profile, "_model_spec": spec,
             "model_revision": hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest(),
             "backend": backend, "device_plan": selected, "threads": cfg["threads"],

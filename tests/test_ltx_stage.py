@@ -1,11 +1,38 @@
 import importlib.util
 from pathlib import Path
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 HAS_TORCH = importlib.util.find_spec("torch") is not None
+
+
+class HeldBackgroundTests(unittest.TestCase):
+    def frames(self, temp):
+        from PIL import Image, ImageDraw
+        first = Image.new("RGB", (128, 64))
+        first.putdata([((x * 37 + y * 91) % 256, (x * 11) % 256, (y * 7) % 256) for y in range(64) for x in range(128)])
+        moved = first.copy()
+        ImageDraw.Draw(moved).rectangle((36, 4, 60, 28), fill=(255, 200, 0))   # something moves in cell row 0, column 1
+        paths = [Path(temp) / "first.png", Path(temp) / "key.png"]
+        first.save(paths[0])
+        moved.save(paths[1])
+        return paths
+
+    def test_cells_that_change_and_their_neighbours_stay_free(self):
+        from local_video import ltx
+        with tempfile.TemporaryDirectory() as temp:
+            first, key = self.frames(temp)
+            self.assertEqual(ltx.background_cells(first, [key], 128, 64), [[0, 0, 0, 1], [0, 0, 0, 1]])
+            self.assertEqual(ltx.background_cells(first, [key], 128, 64, margin=0), [[1, 0, 1, 1], [1, 1, 1, 1]])
+            self.assertEqual(ltx.background_cells(first, [key], 128, 64, free_boxes=[(0.8, 0.6, 1.0, 1.0)], margin=0),
+                             [[1, 0, 1, 1], [1, 1, 1, 0]])
+
+    def test_held_tokens_skip_the_first_latent_frame(self):
+        from local_video import ltx
+        self.assertEqual(ltx.held_tokens([[1, 0], [0, 1]], 3), [4, 7, 8, 11])
 
 
 class LtxRecordTests(unittest.TestCase):

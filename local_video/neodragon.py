@@ -500,6 +500,9 @@ def generate_project(request, output_dir, cache_dir, model_dir, progress, is_can
                 long_video["keyframes"] = request["keyframes"]
             if request.get("cond_noise") is not None:
                 long_video["image_cond_noise_scale"] = float(request["cond_noise"])
+            if request.get("lock_background"):
+                long_video["lock_background"] = {"strength": float(request["lock_background"]),
+                                                 "free_boxes": request.get("free_boxes", [])}
     if long_video:
         settings = {**settings, **{key: long_video[key] for key in ("width", "height", "frames", "fps")}}
     shots = []
