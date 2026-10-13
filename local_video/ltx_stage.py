@@ -220,7 +220,7 @@ class StepProfile:
 
 def hold_background(pipe, cells, strength, latent_frames, torch, image=None, frames=None):
     """Locked camera: in every latent frame after the first, the held cells start from the opening frame kept still
-    (encoded as a short still clip) and carry `strength` as their conditioning level, so the transformer treats them
+    and carry `strength` as their conditioning level, so the transformer treats them
     like the first-frame condition and the framing has nothing to drift with. With `image` and `frames` (latent
     frames) the cells are held to that picture for a span only: a machine that has stopped, a worker who is out of
     view. Keyframes alone are hints the model may ignore for a small figure; held tokens are not. Token edits run on
@@ -237,8 +237,9 @@ def hold_background(pipe, cells, strength, latent_frames, torch, image=None, fra
         if image is not None:
             source = pipe.video_processor.preprocess(image, source.shape[-2], source.shape[-1]).unsqueeze(2)
             source = source.to(conditions[0].device, conditions[0].dtype)
-        still = source.repeat(1, 1, 17, 1, 1)
-        held = retrieve_latents(pipe.vae.encode(still), sample_mode="argmax")
+        # The causal encoder pads time with the first frame, so every latent frame of a still clip equals the latent
+        # of its single frame (a 17-frame clip took 90 s at 512x288 for the same values to 7e-7).
+        held = retrieve_latents(pipe.vae.encode(source), sample_mode="argmax")
         held = pipe._normalize_latents(held, pipe.vae.latents_mean, pipe.vae.latents_std).float().cpu()
         packed = pipe._pack_latents(held[:, :, -1:].repeat(1, 1, latent_frames, 1, 1), 1, 1)
         index = torch.tensor(positions, dtype=torch.long)

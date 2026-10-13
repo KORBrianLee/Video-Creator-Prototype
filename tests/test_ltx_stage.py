@@ -74,6 +74,26 @@ class HoldSpanTests(unittest.TestCase):
         self.assertEqual(float(tokens[0, untouched].abs().sum() + levels[0, untouched].sum()), 0.0)
         self.assertEqual(info, {"cells": 5, "of": 6, "strength": 0.9, "latent_frames": [2, 3]})
 
+    def test_a_still_clip_encodes_to_the_latent_of_its_single_frame(self):
+        import torch
+        from diffusers import AutoencoderKLLTXVideo
+        # The 0.9.5 VAE layout (causal encoder, spatial/temporal/spatiotemporal downsampling) at toy width.
+        torch.manual_seed(0)
+        vae = AutoencoderKLLTXVideo(
+            block_out_channels=(8, 16, 32, 64, 64), decoder_block_out_channels=(16, 32, 64), latent_channels=16,
+            layers_per_block=(1, 1, 1, 1, 1), decoder_layers_per_block=(1, 1, 1, 1),
+            down_block_types=("LTXVideo095DownBlock3D",) * 4,
+            downsample_type=("spatial", "temporal", "spatiotemporal", "spatiotemporal"),
+            spatio_temporal_scaling=(True,) * 4, decoder_spatio_temporal_scaling=(True,) * 3,
+            decoder_inject_noise=(False,) * 4, upsample_residual=(True,) * 3, upsample_factor=(2,) * 3,
+            timestep_conditioning=True, encoder_causal=True, decoder_causal=False, patch_size=4, patch_size_t=1).eval()
+        picture = torch.rand(1, 3, 1, 96, 128) * 2 - 1
+        with torch.no_grad():
+            single = vae.encode(picture).latent_dist.mode()
+            clip = vae.encode(picture.repeat(1, 1, 17, 1, 1)).latent_dist.mode()
+        self.assertEqual(clip.shape[2], 3)
+        self.assertTrue(torch.allclose(clip, single.expand_as(clip), atol=1e-5))
+
 
 class LtxRecordTests(unittest.TestCase):
     def test_timing_splits_loading_steps_and_decoding(self):
