@@ -44,12 +44,11 @@ class TierTests(unittest.TestCase):
         with mock.patch.object(accelerator, "recently_failed", side_effect=lambda root, name: (failed or {}).get(name)):
             return accelerator.model_tier(Path("runtime"), backend, discrete, vram, installed, ltx_installed)
 
-    def test_nvidia_gets_skyreels_and_ltx_is_never_chosen_automatically(self):
+    def test_each_gpu_gets_its_long_video_model(self):
         self.assertEqual(self.tier()[0], "skyreels")
-        for kwargs in ({"backend": "xpu", "discrete": False, "vram": 7 * GIB}, {"backend": "xpu"}, {"vram": 6 * GIB}):
-            tier, reason = self.tier(ltx_installed=True, **kwargs)
-            self.assertEqual(tier, "neo")
-            self.assertIn("ltx_opt_in_only", reason)
+        self.assertEqual(self.tier(backend="xpu", discrete=False, vram=7 * GIB, ltx_installed=True)[0], "ltx")
+        self.assertEqual(self.tier(backend="xpu", discrete=True, ltx_installed=True)[0], "ltx")
+        self.assertEqual(self.tier(vram=6 * GIB, ltx_installed=True)[0], "ltx")
 
     def test_without_installed_long_video_models_neo_is_used_with_reasons(self):
         tier, reason = self.tier(installed=False)
@@ -61,8 +60,7 @@ class TierTests(unittest.TestCase):
 
     def test_recent_runtime_failure_routes_jobs_to_the_next_model(self):
         tier, reason = self.tier(vram=24 * GIB, ltx_installed=True, failed={"skyreels": "CUDA out of memory"})
-        self.assertEqual(tier, "neo")
-        self.assertIn("ltx_opt_in_only", reason)
+        self.assertEqual(tier, "ltx")
         tier, reason = self.tier(vram=24 * GIB, ltx_installed=True, failed={"skyreels": "oom", "ltx": "UR error"})
         self.assertEqual(tier, "neo")
         self.assertIn("UR error", reason)
