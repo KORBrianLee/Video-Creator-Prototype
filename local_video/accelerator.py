@@ -246,12 +246,25 @@ def bound_attention_memory(torch, budget=None, device_types=("xpu", "cuda"), dis
             return original(rows_query, key, value, attn_mask=mask, dropout_p=dropout_p, scale=scale, **extra)
 
         rows, keys = query.shape[-2], key.shape[-2]
+        lead = query.numel() // (rows * query.shape[-1])
         # The plain kernels hold the scores and their softmax at once.
-        per_row = (query.numel() // (rows * query.shape[-1])) * keys * 4 * (2 if plain else 1)
+        per_head_row = keys * 4 * (2 if plain else 1)
         allowed = budget() if budget is not None else attention_budget_bytes(torch, query.device, discrete)
-        step = max(16, int(allowed // max(1, per_row)))
+        step = max(16, int(allowed // max(1, lead * per_head_row)))
         if step >= rows:
             return kernel(query, attn_mask)
+        if (plain and attn_mask is None and query.dim() == 4 and query.shape[0] == 1 and lead > 1
+                and key.shape[:2] == query.shape[:2] == value.shape[:2]):
+            # Rows of every head at once shrink to slivers when memory is short (28 rows ran 1.4x slower than
+            # 910 rows of one head in the same 48 MB), so heads are taken in turn with long row chunks.
+            group = max(1, min(lead, int(allowed // max(1, per_head_row * rows))))
+            head_rows = rows if group > 1 else max(16, int(allowed // max(1, per_head_row)))
+            heads = []
+            for h in range(0, lead, group):
+                qh, kh, vh = query[:, h:h + group], key[:, h:h + group], value[:, h:h + group]
+                heads.append(torch.cat([plain_attention(torch, qh[..., s:s + head_rows, :], kh, vh, None, scale)
+                                        for s in range(0, rows, head_rows)], dim=-2))
+            return torch.cat(heads, dim=1)
         pieces = []
         for start in range(0, rows, step):
             mask = attn_mask

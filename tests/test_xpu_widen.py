@@ -113,6 +113,26 @@ class BoundedAttentionTests(unittest.TestCase):
         finally:
             functional.scaled_dot_product_attention = reference
 
+    def test_short_memory_takes_heads_in_turn_with_the_same_result(self):
+        torch = torch_or_skip(self)
+        from local_video import accelerator
+        functional = torch.nn.functional
+        reference = functional.scaled_dot_product_attention
+        generator = torch.Generator().manual_seed(5)
+        query, key, value = (torch.randn(1, 3, 200, 16, generator=generator) for _ in range(3))
+        full = reference(query, key, value)
+        one_head_row = 200 * 4 * 2
+        # 50 rows of one head; then two whole heads at once.
+        for allowed in (one_head_row * 50, one_head_row * 200 * 2):
+            try:
+                accelerator.bound_attention_memory(torch, budget=lambda: allowed, device_types=("cpu",),
+                                                   plain_types=("cpu",))
+                chunked = functional.scaled_dot_product_attention(query, key, value)
+            finally:
+                functional.scaled_dot_product_attention = reference
+            self.assertEqual(chunked.shape, full.shape)
+            self.assertTrue(torch.allclose(chunked, full, atol=1e-5), f"budget {allowed}")
+
 
 if __name__ == "__main__":
     unittest.main()
