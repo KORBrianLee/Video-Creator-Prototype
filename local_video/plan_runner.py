@@ -68,7 +68,7 @@ def run_plan(plan, control, digest_job, report_dir, sleep=time.sleep, poll_secon
     summary = {"plan": plan.get("name"), "attempts": attempts, "minutes": round((clock() - started) / 60, 1),
                "stop_reason": stop_reason, "completed": sum(r.get("state") == "completed" for r in results),
                "runs": [{key: r.get(key) for key in ("id", "job", "state", "seconds", "model", "fallback", "gpu", "warnings", "error",
-                                                     "timing", "stages_s_gib")
+                                                     "timing", "motion", "stages_s_gib")
                          if r.get(key) not in (None, [], {})} for r in results],
                "details": str(report_dir)}
     text = json.dumps(summary, ensure_ascii=False)

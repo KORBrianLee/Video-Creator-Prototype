@@ -95,6 +95,31 @@ class QualityWarningTests(unittest.TestCase):
         self.assertEqual(digest.quality_warnings([90, 88, 86, 87, 85, 84], [40, 41, 42, 40, 43, 41]), [])
 
 
+class MotionSignalTests(unittest.TestCase):
+    def frames(self, moving):
+        from PIL import Image, ImageDraw
+        frames = []
+        for index in range(6):
+            image = Image.new("L", (96, 54), 100)
+            for x in range(0, 96, 7):  # fixed texture with a little per-frame grain
+                image.putpixel((x, (x * 3 + index) % 54), 100 + (index % 3))
+            if moving:
+                ImageDraw.Draw(image).rectangle((10 + index * 12, 20, 19 + index * 12, 34), fill=200)
+            else:
+                ImageDraw.Draw(image).rectangle((10, 20, 19, 34), fill=200)
+            frames.append(image)
+        return frames
+
+    def test_a_still_view_warns_and_a_subject_crossing_it_does_not(self):
+        still = digest.motion_signals(self.frames(moving=False))
+        crossing = digest.motion_signals(self.frames(moving=True))
+        self.assertLess(still["local_p99"], digest.LITTLE_MOTION_P99)
+        self.assertGreater(crossing["local_p99"], digest.LITTLE_MOTION_P99)
+        self.assertEqual(digest.motion_warnings(still), [f"little_motion: p99 {still['local_p99']}"])
+        self.assertEqual(digest.motion_warnings(crossing), [])
+        self.assertEqual(digest.motion_signals(self.frames(moving=False)[:1]), {})
+
+
 class LongVideoNotesTests(unittest.TestCase):
     def test_step_timing_and_a_cut_prompt_are_reported(self):
         phases = [{"name": "first_frame"},

@@ -14,6 +14,9 @@ import tempfile
 
 SAMPLES = 12
 DIGEST_LIMIT = 2048
+# Strongest local change at 96 px width: an LTX 15 s tower clip whose truck and walking worker barely moved measured
+# 20, an 8 s clip whose crane load travelled across the bay 114. Sampling grain and compression alone stay below.
+LITTLE_MOTION_P99 = 40
 
 
 def frame_signals(video, runtime_tmp, samples=SAMPLES):
@@ -27,14 +30,43 @@ def frame_signals(video, runtime_tmp, samples=SAMPLES):
         subprocess.run([imageio_ffmpeg.get_ffmpeg_exe(), "-nostdin", "-v", "error", "-i", str(video),
                         "-vf", f"select='not(mod(n\\,{max(1, count_frames(video) // samples)}))',scale=96:-1",
                         "-vsync", "0", str(folder / "s%03d.png")], capture_output=True, timeout=300, creationflags=flags)
-        luma, saturation = [], []
+        luma, saturation, grays = [], [], []
         for path in sorted(folder.glob("s*.png"))[:samples + 1]:
             with Image.open(path) as image:
                 luma.append(round(ImageStat.Stat(image.convert("L")).mean[0], 1))
                 saturation.append(round(ImageStat.Stat(image.convert("HSV")).mean[1], 1))
+                grays.append(image.convert("L"))
     finally:
         shutil.rmtree(folder, ignore_errors=True)
-    return {"luma": luma, "saturation": saturation, "warnings": quality_warnings(luma, saturation)}
+    motion = motion_signals(grays)
+    return {"luma": luma, "saturation": saturation, "motion": motion,
+            "warnings": quality_warnings(luma, saturation) + motion_warnings(motion)}
+
+
+def motion_signals(grays):
+    """How much the picture changes: mean change between neighbouring samples (camera or large motion) and the
+    strongest local change from the first sample (the 99th percentile pixel: a subject moving in a still view)."""
+    from PIL import ImageChops, ImageStat
+    if len(grays) < 2:
+        return {}
+    steps = [ImageStat.Stat(ImageChops.difference(a, b)).mean[0] for a, b in zip(grays, grays[1:])]
+    local = 0
+    for later in grays[1:]:
+        histogram = ImageChops.difference(grays[0], later).histogram()
+        threshold, seen = sum(histogram) * 0.99, 0
+        for value, count in enumerate(histogram):
+            seen += count
+            if seen >= threshold:
+                local = max(local, value)
+                break
+    return {"step_mean": round(sum(steps) / len(steps), 2), "step_max": round(max(steps), 2), "local_p99": local}
+
+
+def motion_warnings(motion):
+    """`little_motion` when no subject visibly moves; thresholds from measured clips (see tests)."""
+    if motion and motion["local_p99"] < LITTLE_MOTION_P99:
+        return [f"little_motion: p99 {motion['local_p99']}"]
+    return []
 
 
 def count_frames(video):
@@ -128,6 +160,7 @@ def job_digest(job_id, with_signals=True):
         if with_signals and video.is_file():
             signals = frame_signals(video, root / "tmp")
             digest["warnings"] = signals["warnings"] + notes
+            digest["motion"] = signals["motion"]
             digest["luma"] = signals["luma"]
         elif notes:
             digest["warnings"] = notes
