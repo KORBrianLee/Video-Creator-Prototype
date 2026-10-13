@@ -173,6 +173,11 @@ class StepProfile:
             self.totals[second] += second_seconds
         self.totals[counter] += 1
 
+    def restart(self):
+        """Measure the same step index again in the next pass (two-pass refine)."""
+        self.on, self.started = False, None
+        self.totals = {"widen": 0.0, "matmul": 0.0, "attention": 0.0, "linear_calls": 0, "attention_calls": 0}
+
     def step_end(self, index, now):
         if index == self.step - 1:
             self.on, self.started = True, now
@@ -280,6 +285,24 @@ def open_gpu(root, plan):
 def model_folder(root):
     lock = json.loads((SOURCE / ltx.LOCK).read_text(encoding="utf-8"))
     return root / "models" / lock["folder"]
+
+
+def upscaler_folder(root):
+    lock = json.loads((SOURCE / ltx.UPSCALER_LOCK).read_text(encoding="utf-8"))
+    return root / "models" / lock["folder"] / "latent_upsampler"
+
+
+def upscale_latents(pipe, latents, folder, torch):
+    """Double the first pass's latents (normalized [B, C, F, H, W]) with the official latent upscaler. It runs on the
+    CPU in FP32: it is small, and dtype casts on the Iris Xe driver are not trusted."""
+    from diffusers.pipelines.ltx.modeling_latent_upsampler import LTXLatentUpsamplerModel
+    upsampler = LTXLatentUpsamplerModel.from_pretrained(str(folder), torch_dtype=torch.float32, local_files_only=True).eval()
+    vae = pipe.vae
+    mean, std = vae.latents_mean.float().cpu(), vae.latents_std.float().cpu()
+    raw = pipe._denormalize_latents(latents.float().cpu(), mean, std, vae.config.scaling_factor)
+    doubled = upsampler(raw)
+    del upsampler
+    return pipe._normalize_latents(doubled, mean, std, vae.config.scaling_factor).to(latents.device)
 
 
 def prompt_record(needed, limit):
@@ -417,32 +440,41 @@ def render(torch, device, root, first_frame, settings, prompt_embeds, mask, seed
         from diffusers.pipelines.ltx.pipeline_ltx_condition import LTXVideoCondition
         pipe = LTXConditionPipeline(scheduler=scheduler, vae=vae, text_encoder=None, tokenizer=None, transformer=transformer)
         cpu_video_coords(pipe)
+        plain_prepare = pipe.prepare_latents
         last = (settings["frames"] - 1) // 8 * 8
-        end = image
         if settings.get("anchor_end_image"):
             end_path = Path(settings["anchor_end_image"]["path"])
             if hashlib_sha256(end_path) != settings["anchor_end_image"]["sha256"]:
                 raise RuntimeError("anchor_end_image changed after the request")
-            end = Image.open(end_path).convert("RGB").resize((settings["width"], settings["height"]))
-        conditions = [LTXVideoCondition(image=image, frame_index=0, strength=1.0)]
         for key in settings.get("keyframes", []):
-            key_path = Path(key["path"])
-            if hashlib_sha256(key_path) != key["sha256"]:
+            if hashlib_sha256(Path(key["path"])) != key["sha256"]:
                 raise RuntimeError("a keyframe changed after the request")
-            frame = max(8, round(key["at"] * (settings["frames"] - 1)) // 8 * 8)
-            conditions.append(LTXVideoCondition(
-                image=Image.open(key_path).convert("RGB").resize((settings["width"], settings["height"])),
-                frame_index=min(frame, last - 8), strength=float(key["strength"])))
-        conditions.append(LTXVideoCondition(image=end, frame_index=last, strength=float(anchor)))
-        if settings.get("lock_background"):
-            lock = settings["lock_background"]
-            others = [key["path"] for key in settings.get("keyframes", [])]
-            others += [settings["anchor_end_image"]["path"]] if settings.get("anchor_end_image") else []
-            cells = ltx.background_cells(first_frame, others, settings["width"], settings["height"],
-                                         lock.get("free_boxes", ()))
-            held = hold_background(pipe, cells, float(lock["strength"]), (settings["frames"] - 1) // 8 + 1, torch)
-        inputs = {"conditions": conditions,
-                  "image_cond_noise_scale": float(settings.get("image_cond_noise_scale", 0.15))}
+
+        def condition_inputs(width, height):
+            """The opening frame, keyframes and end anchor at one size, with the held background cells for it."""
+            opening = Image.open(first_frame).convert("RGB").resize((width, height))
+            end = opening
+            if settings.get("anchor_end_image"):
+                end = Image.open(settings["anchor_end_image"]["path"]).convert("RGB").resize((width, height))
+            conditions = [LTXVideoCondition(image=opening, frame_index=0, strength=1.0)]
+            for key in settings.get("keyframes", []):
+                frame = max(8, round(key["at"] * (settings["frames"] - 1)) // 8 * 8)
+                conditions.append(LTXVideoCondition(image=Image.open(key["path"]).convert("RGB").resize((width, height)),
+                                                    frame_index=min(frame, last - 8), strength=float(key["strength"])))
+            conditions.append(LTXVideoCondition(image=end, frame_index=last, strength=float(anchor)))
+            pipe.prepare_latents = plain_prepare
+            held_cells = None
+            if settings.get("lock_background"):
+                lock = settings["lock_background"]
+                others = [key["path"] for key in settings.get("keyframes", [])]
+                others += [settings["anchor_end_image"]["path"]] if settings.get("anchor_end_image") else []
+                cells = ltx.background_cells(first_frame, others, width, height, lock.get("free_boxes", ()))
+                held_cells = hold_background(pipe, cells, float(lock["strength"]), (settings["frames"] - 1) // 8 + 1, torch)
+            return {"conditions": conditions,
+                    "image_cond_noise_scale": float(settings.get("image_cond_noise_scale", 0.15))}, held_cells
+
+        base = settings.get("refine") or {"width": settings["width"], "height": settings["height"]}
+        inputs, held = condition_inputs(base["width"], base["height"])
     else:
         pipe = LTXImageToVideoPipeline(scheduler=scheduler, vae=vae, text_encoder=None, tokenizer=None, transformer=transformer)
         inputs = {"image": image}
@@ -458,14 +490,33 @@ def render(torch, device, root, first_frame, settings, prompt_embeds, mask, seed
             profile.step_end(index, step_ends[-1])
         return tensors
 
+    common = {"prompt_embeds": prompt_embeds, "prompt_attention_mask": mask, "num_frames": settings["frames"],
+              "frame_rate": settings["fps"], "guidance_scale": settings["guidance_scale"], "generator": generator,
+              "max_sequence_length": settings["max_sequence_length"], "callback_on_step_end": mark_step}
+    decoded = {"decode_timestep": settings["decode_timestep"], "decode_noise_scale": settings["decode_noise_scale"],
+               "output_type": "pil"}
+    refined = None
     pipe_start = time.monotonic()
     with torch.inference_mode(), generator_side_noise(torch):
-        result = pipe(**inputs, prompt_embeds=prompt_embeds, prompt_attention_mask=mask,
-                      height=settings["height"], width=settings["width"], num_frames=settings["frames"],
-                      frame_rate=settings["fps"], num_inference_steps=len(settings["timesteps"]),
-                      guidance_scale=settings["guidance_scale"], decode_timestep=settings["decode_timestep"],
-                      decode_noise_scale=settings["decode_noise_scale"], generator=generator, output_type="pil",
-                      max_sequence_length=settings["max_sequence_length"], callback_on_step_end=mark_step)
+        if settings.get("refine"):
+            # Official two-pass recipe: the motion at the preview size, then the latents doubled and finished at full size.
+            fixed_schedule(scheduler, ltx.FIRST_PASS, torch)
+            latents = pipe(**inputs, **common, height=base["height"], width=base["width"],
+                           num_inference_steps=len(ltx.FIRST_PASS), output_type="latent").frames
+            upscale_start = time.monotonic()
+            latents = upscale_latents(pipe, latents, upscaler_folder(root), torch)
+            refined = {"first_steps": len(ltx.FIRST_PASS), "second_steps": len(ltx.SECOND_PASS) - 1,
+                       "upscale_seconds": round(time.monotonic() - upscale_start, 1)}
+            fixed_schedule(scheduler, ltx.SECOND_PASS, torch)
+            if profile:
+                profile.restart()
+            inputs, held = condition_inputs(settings["width"], settings["height"])
+            result = pipe(**inputs, **common, **decoded, height=settings["height"], width=settings["width"],
+                          latents=latents, denoise_strength=ltx.SECOND_PASS_STRENGTH,
+                          num_inference_steps=len(ltx.SECOND_PASS))
+        else:
+            result = pipe(**inputs, **common, **decoded, height=settings["height"], width=settings["width"],
+                          num_inference_steps=len(settings["timesteps"]))
     pipe_end = time.monotonic()
     frames = result.frames[0]
     if len(frames) != settings["frames"]:
@@ -473,6 +524,7 @@ def render(torch, device, root, first_frame, settings, prompt_embeds, mask, seed
     return frames, {"weights": "resident" if resident else "streamed", "peak_gpu_allocated_bytes": gpu.max_memory_allocated(),
                     "anchor_end": anchor, "timing": timing_record(load_start, pipe_start, step_ends, pipe_end),
                     **({"held_background": held} if held else {}),
+                    **({"refine": refined} if refined else {}),
                     **({"profile": profile.record()} if profile and profile.record() else {})}
 
 

@@ -245,6 +245,14 @@ def ltx_needed(root, profile, no_gpu_torch, detect=detect_torch_runtime):
     return [] if ltx.installed(root, SOURCE) else ["models/ltx-video-2b-0.9.8"]
 
 
+def ltx_upscaler_needed(root, profile, no_gpu_torch, detect=detect_torch_runtime):
+    """The latent upscaler for LTX's two-pass recipe (505 MB) comes with LTX; plain LTX runs without it."""
+    if profile != "neodragon" or no_gpu_torch or os.name != "nt" or detect(root)[0] != "xpu":
+        return []
+    from local_video import ltx
+    return [] if ltx.upscaler_installed(root, SOURCE) else ["models/ltx-spatial-upscaler-0.9.7"]
+
+
 def install_skyreels(root, convert=None):
     from local_video import skyreels
     return install_locked_model(root, skyreels.LOCK, convert)
@@ -355,7 +363,8 @@ def main():
     if args.action == "update":
         stale = [name for name in install_locks(args.profile) if baseline.get(name) != lock_digest(SOURCE / name)]
         stale += (missing_engines(root, args.with_vulkan) + torch_runtime_needed(root, args.profile, args.no_gpu_torch)
-                  + skyreels_needed(root, args.profile, args.no_gpu_torch) + ltx_needed(root, args.profile, args.no_gpu_torch))
+                  + skyreels_needed(root, args.profile, args.no_gpu_torch) + ltx_needed(root, args.profile, args.no_gpu_torch)
+                  + ltx_upscaler_needed(root, args.profile, args.no_gpu_torch))
         print(json.dumps({"update": "full_verify" if stale else "code_only", "changed_locks": stale}), flush=True)
         args.action = "all" if stale else "deploy"
         verified = not stale
@@ -394,7 +403,8 @@ def main():
                 prepare(root, json.loads((SOURCE / "neodragon-research.lock.json").read_text(encoding="utf-8")))
             if torch_runtime_needed(root, args.profile, args.no_gpu_torch):
                 install_torch_runtime(root)
-            for needed, lock_name in ((skyreels_needed, "skyreels.lock.json"), (ltx_needed, "ltx.lock.json")):
+            for needed, lock_name in ((skyreels_needed, "skyreels.lock.json"), (ltx_needed, "ltx.lock.json"),
+                                      (ltx_upscaler_needed, "ltx-upscaler.lock.json")):
                 if needed(root, args.profile, args.no_gpu_torch):
                     try:
                         install_locked_model(root, lock_name)

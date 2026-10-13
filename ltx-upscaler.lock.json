@@ -1,0 +1,28 @@
+{
+  "model": "LTX-Video spatial latent upscaler 0.9.7 (weights identical to the 0.9.8 upscaler)",
+  "folder": "ltx-spatial-upscaler-0.9.7",
+  "revision": "c96c168c2bd8bbc82c9fe8259e5f89f8b2ea293f",
+  "license": "LTX-Video Open Weights License 0.X (published with the weights); same terms as the LTX-Video weights, see docs/MODEL_LICENSES.md",
+  "note": "Doubles LTX latents in height and width for the official two-pass (multi-scale) recipe of the 0.9.8 distilled models. Optional: plain LTX generation never needs it.",
+  "download_bytes": 505009918,
+  "files": [
+    {
+      "repo": "Lightricks/ltxv-spatial-upscaler-0.9.7",
+      "revision": "c96c168c2bd8bbc82c9fe8259e5f89f8b2ea293f",
+      "source": "latent_upsampler/config.json",
+      "path": "latent_upsampler/config.json",
+      "size": 86,
+      "sha256": "8a77bd9217dfd6473adcdc1161b4ddc7b96bfb6e53dacaae891af9ae0e6c4127",
+      "convert_to_bf16": false
+    },
+    {
+      "repo": "Lightricks/ltxv-spatial-upscaler-0.9.7",
+      "revision": "c96c168c2bd8bbc82c9fe8259e5f89f8b2ea293f",
+      "source": "latent_upsampler/diffusion_pytorch_model.safetensors",
+      "path": "latent_upsampler/diffusion_pytorch_model.safetensors",
+      "size": 505009832,
+      "sha256": "e1d5e5cc4bdda2ff8ece07ab86e746890e1e515848797d2dd1c9e0179f442fdc",
+      "convert_to_bf16": false
+    }
+  ]
+}

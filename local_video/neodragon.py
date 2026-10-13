@@ -487,13 +487,16 @@ def generate_project(request, output_dir, cache_dir, model_dir, progress, is_can
                          f"사유: {choice.get('model_tier_reason') or choice.get('reason') or 'NVIDIA GPU 없음'}")
     if request.get("aspect", "16:10") != "16:10" and selected["model_tier"] != "ltx":
         raise ValueError(f"aspect {request['aspect']}는 LTX 계층(Intel GPU)에서만 지원합니다. 이 작업의 모델: {selected['model_tier']}")
+    if request.get("refine") and selected["model_tier"] != "ltx":
+        raise ValueError(f"refine은 LTX 계층(Intel GPU)에서만 지원합니다. 이 작업의 모델: {selected['model_tier']}")
     if selected["model_tier"] == "skyreels":
         from . import skyreels
         long_video = skyreels.settings_for(choice.get("total_memory_bytes"), duration, request.get("preset", "preview"))
     elif selected["model_tier"] == "ltx":
         from . import ltx
         long_video = ltx.settings_for(duration, request.get("preset", "preview"), request.get("aspect", "16:10"),
-                                      request.get("text_tokens", 128), request.get("decode", "lean"))
+                                      request.get("text_tokens", 128), request.get("decode", "lean"),
+                                      bool(request.get("refine")))
         if request.get("profile_step"):
             long_video["profile_step"] = int(request["profile_step"])
         if request.get("anchor_end"):

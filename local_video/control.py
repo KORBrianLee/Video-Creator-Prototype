@@ -500,6 +500,15 @@ def normalize(value):
         raise ValueError("free_boxes는 [x0, y0, x1, y1](0~1) 상자 최대 8개의 목록입니다(키프레임에 드러나지 않게 제자리에서 움직이는 대상).")
     if free_boxes and lock is None:
         raise ValueError("free_boxes는 lock_background와 함께 사용합니다.")
+    refine = value.get("refine", False)
+    if not isinstance(refine, bool):
+        raise ValueError("refine은 true 또는 false입니다(LTX 2단계: 미리보기 크기로 동작을 만들고 두 배 크기로 다듬기).")
+    if refine and anchor_end is None:
+        raise ValueError("refine은 anchor_end(키프레임 경로)와 함께 사용합니다.")
+    if refine:
+        from .ltx import upscaler_installed
+        if not upscaler_installed(load_config()[1], APP):
+            raise ValueError("refine에는 LTX 잠재 업스케일러(505MB)가 필요합니다. update.cmd로 설치하세요.")
     profile_step = value.get("profile_step")
     if profile_step is not None and (isinstance(profile_step, bool) or not isinstance(profile_step, int) or not 1 <= profile_step <= 7):
         raise ValueError("profile_step은 1~7 정수입니다(그 디노이징 단계의 시간을 가중치 올리기·행렬곱·어텐션으로 나눠 기록).")
@@ -535,6 +544,7 @@ def normalize(value):
             **({"lock_background": float(lock)} if lock is not None else {}),
             **({"free_boxes": [[float(v) for v in box] for box in free_boxes]} if free_boxes else {}),
             **({"profile_step": profile_step} if profile_step is not None else {}),
+            **({"refine": True} if refine else {}),
             "model_profile": profile, "_model_spec": spec,
             "model_revision": hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest(),
             "backend": backend, "device_plan": selected, "threads": cfg["threads"],

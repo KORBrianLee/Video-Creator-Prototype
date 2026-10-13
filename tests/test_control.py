@@ -165,6 +165,19 @@ class ControllerTests(unittest.TestCase):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 control.normalize({**self.request, **bad})
 
+    def test_refine_needs_keyframes_and_the_installed_upscaler(self):
+        from unittest import mock
+        from local_video import ltx
+        self.assertNotIn("refine", control.normalize(self.request))
+        with mock.patch.object(ltx, "upscaler_installed", return_value=True):
+            self.assertTrue(control.normalize({**self.request, "anchor_end": 0.9, "refine": True})["refine"])
+            with self.assertRaises(ValueError):
+                control.normalize({**self.request, "refine": True})
+            with self.assertRaises(ValueError):
+                control.normalize({**self.request, "anchor_end": 0.9, "refine": "yes"})
+        with mock.patch.object(ltx, "upscaler_installed", return_value=False), self.assertRaises(ValueError):
+            control.normalize({**self.request, "anchor_end": 0.9, "refine": True})
+
     def test_profile_step_is_one_denoising_step(self):
         self.assertNotIn("profile_step", control.normalize(self.request))
         self.assertEqual(control.normalize({**self.request, "profile_step": 1})["profile_step"], 1)

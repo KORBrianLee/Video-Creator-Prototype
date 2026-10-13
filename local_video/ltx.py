@@ -8,8 +8,16 @@ the model's temporal position range is 20s).
 from __future__ import annotations
 
 LOCK = "ltx.lock.json"
+UPSCALER_LOCK = "ltx-upscaler.lock.json"
 # Official distilled schedule for the 0.9.7/0.9.8 distilled models (8 steps, last step near zero).
 TIMESTEPS = [1000, 993, 987, 981, 975, 909, 725, 0.03]
+# Official multi-scale recipe for the 0.9.8 distilled models: the first pass stops at 0.725, the latent upscaler
+# doubles height and width, and a short second pass runs 0.9094, 0.725, 0.4219 at full size. The pipeline only
+# starts from given latents when denoise_strength < 1, which drops leading steps, so the second schedule carries
+# one extra leading step that strength 0.75 removes (int(4 * 0.75) = 3 steps from 0.9094).
+FIRST_PASS = TIMESTEPS[:7]
+SECOND_PASS = [1000, 909.4, 725, 421.9]
+SECOND_PASS_STRENGTH = 0.75
 
 
 # Both sides are multiples of 32 (the VAE's spatial factor). 16:9 matches widescreen first frames without
@@ -73,13 +81,24 @@ def held_tokens(cells, latent_frames):
 
 # Prompt tokens the T5 encoder reads: 128 is the diffusers default (about 90 words, the rest is cut off);
 # the official LTX-Video pipeline encodes up to 256 (about 180 words).
-def settings_for(duration, preset="preview", aspect="16:10", text_tokens=128, decode="lean"):
-    width, height = SIZES[(aspect, "quality" if preset == "quality" else "preview")]
-    return {"width": width, "height": height, "frames": int(duration) * 24 + 1, "fps": 24,
-            "timesteps": TIMESTEPS, "guidance_scale": 1.0, "decode_timestep": 0.05, "decode_noise_scale": 0.025,
-            "max_sequence_length": text_tokens, "vae_tiling": vae_tiling(height, decode)}
+def settings_for(duration, preset="preview", aspect="16:10", text_tokens=128, decode="lean", refine=False):
+    """With `refine` the motion is generated at the preview size and the output is twice as wide and high (the
+    official two-pass recipe); width and height are always the output size."""
+    width, height = SIZES[(aspect, "quality" if preset == "quality" and not refine else "preview")]
+    settings = {"width": width, "height": height, "frames": int(duration) * 24 + 1, "fps": 24,
+                "timesteps": TIMESTEPS, "guidance_scale": 1.0, "decode_timestep": 0.05, "decode_noise_scale": 0.025,
+                "max_sequence_length": text_tokens, "vae_tiling": vae_tiling(height, decode)}
+    if refine:
+        settings.update(width=width * 2, height=height * 2, vae_tiling=vae_tiling(height * 2, decode),
+                        refine={"width": width, "height": height})
+    return settings
 
 
 def installed(root, source):
     from .skyreels import installed as lock_installed
     return lock_installed(root, source, LOCK)
+
+
+def upscaler_installed(root, source):
+    from .skyreels import installed as lock_installed
+    return lock_installed(root, source, UPSCALER_LOCK)

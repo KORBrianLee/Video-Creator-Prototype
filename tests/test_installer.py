@@ -81,6 +81,27 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(needed(intel), [])
         self.assertEqual(needed(nvidia), ["runtime/cuda-site"])
 
+    def test_ltx_upscaler_is_requested_for_intel_gpus_until_its_lock_is_installed(self):
+        intel = lambda root: ("xpu", "xpu")
+        nvidia = lambda root: ("cuda", "cuda128")
+        if os.name != "nt":
+            self.skipTest("LTX is installed on Windows only")
+        needed = lambda detect, profile="neodragon", skip=False: installer.ltx_upscaler_needed(self.root, profile, skip, detect)
+        self.assertEqual(needed(intel), ["models/ltx-spatial-upscaler-0.9.7"])
+        self.assertEqual(needed(nvidia), [])
+        self.assertEqual(needed(intel, skip=True), [])
+        self.assertEqual(needed(intel, profile="lightning"), [])
+        lock = json.loads((installer.SOURCE / "ltx-upscaler.lock.json").read_text(encoding="utf-8"))
+        folder = self.root / "models" / lock["folder"]
+        for item in lock["files"]:
+            (folder / item["path"]).parent.mkdir(parents=True, exist_ok=True)
+            (folder / item["path"]).write_bytes(b"x")
+        record = {"revision": lock["revision"], "files": {item["path"]: "x" for item in lock["files"]}}
+        (folder / "install-record.json").write_text(json.dumps(record), encoding="utf-8")
+        self.assertEqual(needed(intel), [])
+        self.assertTrue(all(len(item["sha256"]) == 64 for item in lock["files"]))
+        self.assertLess(lock["download_bytes"], 2**30)
+
     def test_vulkan_is_default_and_can_be_skipped_only_explicitly(self):
         self.assertTrue(installer.wants_vulkan("neodragon", False))
         self.assertFalse(installer.wants_vulkan("neodragon", True))

@@ -184,6 +184,20 @@ class LtxTests(unittest.TestCase):
         self.assertEqual((rows(288, safe), rows(288, lean)), (2, 1))
         self.assertEqual(ltx.vae_tiling(576, "lean"), safe)  # 1024x576 keeps the small tiles
 
+    def test_refine_generates_at_the_preview_size_and_outputs_twice_as_large(self):
+        from local_video import ltx
+        refined = ltx.settings_for(15, "preview", "16:9", refine=True)
+        self.assertEqual((refined["width"], refined["height"], refined["refine"]), (1024, 576, {"width": 512, "height": 288}))
+        self.assertEqual(refined["vae_tiling"], ltx.vae_tiling(576))  # small tiles above 320 px
+        self.assertEqual(ltx.settings_for(15, "quality", "16:9", refine=True)["refine"], {"width": 512, "height": 288})
+        self.assertNotIn("refine", ltx.settings_for(15, "preview", "16:9"))
+
+    def test_second_pass_starts_from_the_upscaled_latents_at_0_9094(self):
+        from local_video import ltx
+        kept = int(len(ltx.SECOND_PASS) * ltx.SECOND_PASS_STRENGTH)
+        self.assertEqual(ltx.SECOND_PASS[len(ltx.SECOND_PASS) - kept:], [909.4, 725, 421.9])
+        self.assertEqual(ltx.FIRST_PASS[-1], 725)
+
     def test_longer_prompts_are_read_only_when_asked_for(self):
         from local_video import ltx
         self.assertEqual(ltx.settings_for(15)["max_sequence_length"], 128)
