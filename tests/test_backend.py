@@ -91,6 +91,21 @@ class BackendTests(unittest.TestCase):
         with Image.open(sheet) as contact:
             self.assertEqual(contact.size, (1024, 560))
 
+    def test_long_clips_are_judged_from_six_frames_at_their_own_width(self):
+        from PIL import Image
+        settings = {"width": 64, "height": 36, "frames": 121, "fps": 24, "steps": 4}
+        folder = self.work / "long"
+        folder.mkdir()
+        for index in range(121):
+            Image.new("RGB", (64, 36), (index * 2, 40, 80)).save(folder / f"frame_{index:03d}.png")
+        video = folder / "clip.mp4"
+        backend._encode_frames(folder, video, settings, lambda: False)
+        sheet = self.work / "long.jpg"
+        backend._assemble([{"id": "s01", "video_path": str(video), "seed": 7}], self.work / "long.mp4", sheet, settings,
+                          lambda: False)
+        with Image.open(sheet) as contact:
+            self.assertEqual(contact.size, (3 * 64, 2 * (36 + 24)))
+
     def test_single_shot_preserves_encoded_bytes_without_another_lossy_pass(self):
         video = self.frames()
         output, sheet = self.work / "single.mp4", self.work / "single.jpg"

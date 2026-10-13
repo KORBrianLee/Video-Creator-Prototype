@@ -499,10 +499,15 @@ def _cached(cache: Path, key: str, settings: dict, is_cancelled: Callable) -> di
 def _assemble(shots: list[dict], destination: Path, sheet_path: Path, settings: dict, is_cancelled: Callable) -> None:
     import imageio_ffmpeg
     from PIL import Image, ImageDraw
-    width = 256
+    # A long clip is judged from this one image: four 256 px thumbnails of a 15 s clip leave a worker a few
+    # pixels tall, so clips over 4 s get six frames at their own width (up to 512) in a 3 x 2 grid.
+    long_clip = settings["frames"] > 97
+    samples, columns = (6, 3) if long_clip else (4, 4)
+    width = min(settings["width"], 512) if long_clip else 256
     thumb_height = max(1, round(settings["height"]*width/settings["width"]))
     tile_height = thumb_height + 24
-    sheet = Image.new("RGB", (width*4, tile_height*len(shots)), "#171a21")
+    rows_per_shot = -(-samples // columns)
+    sheet = Image.new("RGB", (width*columns, tile_height*rows_per_shot*len(shots)), "#171a21")
     draw = ImageDraw.Draw(sheet)
     _cancel(is_cancelled)
     # A single completed shot is already encoded at the requested settings.
@@ -520,16 +525,18 @@ def _assemble(shots: list[dict], destination: Path, sheet_path: Path, settings: 
             try:
                 metadata = next(reader)
                 size = tuple(metadata["size"])
-                selection = [round((settings["frames"]-1)*i/3) for i in range(4)]
+                selection = [round((settings["frames"]-1)*i/(samples-1)) for i in range(samples)]
                 for index, raw in enumerate(reader):
                     _cancel(is_cancelled)
                     if writer is not None:
                         writer.send(raw)
                     if index in selection:
                         frame = Image.frombytes("RGB", size, raw).resize((width, thumb_height))
-                        column = selection.index(index)
-                        sheet.paste(frame, (column*width, row*tile_height))
-                        draw.text((column*width+6, row*tile_height+thumb_height+4), f"{shot['id']} frame {index} seed {shot['seed']}", fill="white")
+                        position = selection.index(index)
+                        x, y = position % columns * width, (row*rows_per_shot + position // columns) * tile_height
+                        sheet.paste(frame, (x, y))
+                        when = f"{index / settings['fps']:.1f}s" if long_clip else f"frame {index}"
+                        draw.text((x+6, y+thumb_height+4), f"{shot['id']} {when} seed {shot['seed']}", fill="white")
             finally:
                 reader.close()
     finally:
