@@ -6,6 +6,7 @@ classifier-free guidance. Clips are generated in one pass (15s = 361 frames, 46 
 the model's temporal position range is 20s).
 """
 from __future__ import annotations
+import math
 
 LOCK = "ltx.lock.json"
 UPSCALER_LOCK = "ltx-upscaler.lock.json"
@@ -75,12 +76,21 @@ def background_cells(first, others, width, height, free_boxes=(), threshold=3.0,
             for r in range(rows)]
 
 
-def held_tokens(cells, latent_frames):
-    """Packed token positions (frame-major, then rows, then columns) of the held cells in every latent frame after
-    the first, which the opening-frame condition already holds."""
+def held_tokens(cells, latent_frames, frames=None):
+    """Packed token positions (frame-major, then rows, then columns) of the held cells in the latent `frames`, by
+    default every latent frame after the first, which the opening-frame condition already holds."""
     rows, cols = len(cells), len(cells[0])
     per_frame = [r * cols + c for r in range(rows) for c in range(cols) if cells[r][c]]
-    return [f * rows * cols + i for f in range(1, latent_frames) for i in per_frame]
+    frames = range(1, latent_frames) if frames is None else frames
+    return [f * rows * cols + i for f in frames for i in per_frame]
+
+
+def latent_span(start, end, fps, latent_frames):
+    """Latent frames whose video frames all lie between `start` and `end` seconds: latent frame k > 0 carries video
+    frames 8k-7 to 8k, the first one frame 0 alone (held by the opening-frame condition)."""
+    first = max(1, math.ceil((start * fps + 7) / 8))
+    last = min(latent_frames - 1, math.floor(end * fps / 8))
+    return range(first, last + 1)
 
 
 # Prompt tokens the T5 encoder reads: 128 is the diffusers default (about 90 words, the rest is cut off);

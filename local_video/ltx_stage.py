@@ -218,20 +218,26 @@ class StepProfile:
                 "linear_calls": totals["linear_calls"], "attention_calls": totals["attention_calls"]}
 
 
-def hold_background(pipe, cells, strength, latent_frames, torch):
+def hold_background(pipe, cells, strength, latent_frames, torch, image=None, frames=None):
     """Locked camera: in every latent frame after the first, the held cells start from the opening frame kept still
     (encoded as a short still clip) and carry `strength` as their conditioning level, so the transformer treats them
-    like the first-frame condition and the framing has nothing to drift with. Token edits run on the CPU (integer
-    indexing on Iris Xe is not trusted)."""
+    like the first-frame condition and the framing has nothing to drift with. With `image` and `frames` (latent
+    frames) the cells are held to that picture for a span only: a machine that has stopped, a worker who is out of
+    view. Keyframes alone are hints the model may ignore for a small figure; held tokens are not. Token edits run on
+    the CPU (integer indexing on Iris Xe is not trusted)."""
     from diffusers.pipelines.ltx.pipeline_ltx_condition import retrieve_latents
     prepare = pipe.prepare_latents
-    positions = ltx.held_tokens(cells, latent_frames)
+    positions = ltx.held_tokens(cells, latent_frames, frames)
 
     def prepare_latents(conditions, *args, **kwargs):
         latents, mask, coords, extra = prepare(conditions, *args, **kwargs)
         if not positions:
             return latents, mask, coords, extra
-        still = conditions[0].repeat(1, 1, 17, 1, 1)
+        source = conditions[0]
+        if image is not None:
+            source = pipe.video_processor.preprocess(image, source.shape[-2], source.shape[-1]).unsqueeze(2)
+            source = source.to(conditions[0].device, conditions[0].dtype)
+        still = source.repeat(1, 1, 17, 1, 1)
         held = retrieve_latents(pipe.vae.encode(still), sample_mode="argmax")
         held = pipe._normalize_latents(held, pipe.vae.latents_mean, pipe.vae.latents_std).float().cpu()
         packed = pipe._pack_latents(held[:, :, -1:].repeat(1, 1, latent_frames, 1, 1), 1, 1)
@@ -249,7 +255,8 @@ def hold_background(pipe, cells, strength, latent_frames, torch):
 
     pipe.prepare_latents = prepare_latents
     rows, cols = len(cells), len(cells[0])
-    return {"cells": sum(map(sum, cells)), "of": rows * cols, "strength": strength}
+    return {"cells": sum(map(sum, cells)), "of": rows * cols, "strength": strength,
+            **({"latent_frames": [frames.start, frames.stop - 1]} if frames is not None and len(frames) else {})}
 
 
 def cpu_scheduler_step(scheduler):
@@ -470,9 +477,9 @@ def render(torch, device, root, first_frame, settings, prompt_embeds, mask, seed
             end_path = Path(settings["anchor_end_image"]["path"])
             if hashlib_sha256(end_path) != settings["anchor_end_image"]["sha256"]:
                 raise RuntimeError("anchor_end_image changed after the request")
-        for key in settings.get("keyframes", []):
+        for key in settings.get("keyframes", []) + settings.get("holds", []):
             if hashlib_sha256(Path(key["path"])) != key["sha256"]:
-                raise RuntimeError("a keyframe changed after the request")
+                raise RuntimeError("a keyframe or held picture changed after the request")
 
         def condition_inputs(width, height):
             """The opening frame, keyframes and end anchor at one size, with the held background cells for it."""
@@ -487,15 +494,22 @@ def render(torch, device, root, first_frame, settings, prompt_embeds, mask, seed
                                                     frame_index=min(frame, last - 8), strength=float(key["strength"])))
             conditions.append(LTXVideoCondition(image=end, frame_index=last, strength=float(anchor)))
             pipe.prepare_latents = plain_prepare
-            held_cells = None
+            held = {}
+            latent_frames = (settings["frames"] - 1) // 8 + 1
             if settings.get("lock_background"):
                 lock = settings["lock_background"]
                 others = [key["path"] for key in settings.get("keyframes", [])]
                 others += [settings["anchor_end_image"]["path"]] if settings.get("anchor_end_image") else []
                 cells = ltx.background_cells(first_frame, others, width, height, lock.get("free_boxes", ()))
-                held_cells = hold_background(pipe, cells, float(lock["strength"]), (settings["frames"] - 1) // 8 + 1, torch)
+                held["held_background"] = hold_background(pipe, cells, float(lock["strength"]), latent_frames, torch)
+            for hold in settings.get("holds", []):
+                cells = ltx.background_cells(hold["path"], [], width, height, hold.get("free_boxes", ()))
+                picture = Image.open(hold["path"]).convert("RGB").resize((width, height))
+                span = ltx.latent_span(hold["from"], hold["to"], settings["fps"], latent_frames)
+                held.setdefault("held_spans", []).append(
+                    hold_background(pipe, cells, float(hold["strength"]), latent_frames, torch, picture, span))
             return {"conditions": conditions,
-                    "image_cond_noise_scale": float(settings.get("image_cond_noise_scale", 0.15))}, held_cells
+                    "image_cond_noise_scale": float(settings.get("image_cond_noise_scale", 0.15))}, held
 
         base = settings.get("refine") or {"width": settings["width"], "height": settings["height"]}
         inputs, held = condition_inputs(base["width"], base["height"])
@@ -547,7 +561,7 @@ def render(torch, device, root, first_frame, settings, prompt_embeds, mask, seed
         raise RuntimeError(f"LTX returned {len(frames)} frames, expected {settings['frames']}")
     return frames, {"weights": "resident" if resident else "streamed", "peak_gpu_allocated_bytes": gpu.max_memory_allocated(),
                     "anchor_end": anchor, "timing": timing_record(load_start, pipe_start, step_ends, pipe_end),
-                    **({"held_background": held} if held else {}),
+                    **(held or {}),
                     **({"refine": refined} if refined else {}),
                     **({"profile": profile.record()} if profile and profile.record() else {})}
 

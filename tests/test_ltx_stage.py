@@ -33,6 +33,46 @@ class HeldBackgroundTests(unittest.TestCase):
     def test_held_tokens_skip_the_first_latent_frame(self):
         from local_video import ltx
         self.assertEqual(ltx.held_tokens([[1, 0], [0, 1]], 3), [4, 7, 8, 11])
+        self.assertEqual(ltx.held_tokens([[1, 0], [0, 1]], 5, range(2, 4)), [8, 11, 12, 15])
+
+    def test_a_span_holds_the_latent_frames_that_lie_inside_it(self):
+        from local_video import ltx
+        # 15 s at 24 fps: 46 latent frames; latent frame k carries video frames 8k-7 to 8k.
+        self.assertEqual(ltx.latent_span(8.0, 11.0, 24, 46), range(25, 34))
+        self.assertEqual(ltx.latent_span(11.0, 15.0, 24, 46), range(34, 46))
+        self.assertEqual(ltx.latent_span(0.0, 15.0, 24, 46), range(1, 46))
+
+
+@unittest.skipUnless(HAS_TORCH and importlib.util.find_spec("diffusers") is not None, "video runtime only")
+class HoldSpanTests(unittest.TestCase):
+    def test_a_span_holds_its_cells_to_the_picture_only_in_its_latent_frames(self):
+        import torch
+        from types import SimpleNamespace
+        from PIL import Image
+        from diffusers.pipelines.ltx.pipeline_ltx_condition import LTXConditionPipeline
+        from local_video.ltx_stage import hold_background
+        rows, cols, frames, channels = 2, 3, 4, 2
+
+        class Encoded:
+            """A fake VAE: every latent value is the mean of the encoded picture."""
+            def __init__(self, video):
+                self.latents = torch.full((1, channels, (video.shape[2] - 1) // 8 + 1, rows, cols), float(video.mean()))
+
+        pipe = SimpleNamespace(
+            prepare_latents=lambda conditions, *a, **k: (torch.zeros(1, frames * rows * cols, channels),
+                                                         torch.zeros(1, frames * rows * cols), None, 0),
+            vae=SimpleNamespace(encode=Encoded, latents_mean=torch.zeros(channels), latents_std=torch.ones(channels)),
+            _normalize_latents=LTXConditionPipeline._normalize_latents, _pack_latents=LTXConditionPipeline._pack_latents,
+            video_processor=SimpleNamespace(preprocess=lambda image, h, w: torch.full((1, 3, h, w), 0.5)))
+        info = hold_background(pipe, [[1, 1, 1], [1, 0, 1]], 0.9, frames, torch, Image.new("RGB", (96, 64)), range(2, 4))
+        tokens, levels, _, _ = pipe.prepare_latents([torch.full((1, 3, 1, 64, 96), -0.5)])
+        per_frame = rows * cols
+        held = [f * per_frame + i for f in (2, 3) for i in (0, 1, 2, 3, 5)]
+        self.assertTrue(torch.allclose(tokens[0, held], torch.full((10, channels), 0.45)))
+        self.assertTrue(torch.allclose(levels[0, held], torch.full((10,), 0.9)))
+        untouched = [i for i in range(frames * per_frame) if i not in held]
+        self.assertEqual(float(tokens[0, untouched].abs().sum() + levels[0, untouched].sum()), 0.0)
+        self.assertEqual(info, {"cells": 5, "of": 6, "strength": 0.9, "latent_frames": [2, 3]})
 
 
 class LtxRecordTests(unittest.TestCase):

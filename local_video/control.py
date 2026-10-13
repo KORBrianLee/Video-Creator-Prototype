@@ -500,6 +500,32 @@ def normalize(value):
         raise ValueError("free_boxes는 [x0, y0, x1, y1](0~1) 상자 최대 8개의 목록입니다(키프레임에 드러나지 않게 제자리에서 움직이는 대상).")
     if free_boxes and lock is None:
         raise ValueError("free_boxes는 lock_background와 함께 사용합니다.")
+    holds = []
+    raw_holds = value.get("holds", [])
+    if not isinstance(raw_holds, list) or len(raw_holds) > 4:
+        raise ValueError("holds는 최대 4개의 목록입니다.")
+    number = lambda v: isinstance(v, (int, float)) and not isinstance(v, bool)
+    for item in raw_holds:
+        _, image_root = load_config()
+        if not isinstance(item, dict) or not item.get("image_path") or not number(item.get("from")) \
+                or not number(item.get("to")) or not 0 <= item["from"] < item["to"] <= duration:
+            raise ValueError("holds 항목은 image_path와 0 ≤ from < to ≤ 영상 길이(초)를 가집니다(그 구간 동안 화면을 이 이미지에 붙잡음).")
+        strength = item.get("strength", 0.9)
+        if not number(strength) or not 0 < strength <= 1:
+            raise ValueError("holds strength는 0보다 크고 1 이하입니다.")
+        boxes = item.get("free_boxes", [])
+        if not isinstance(boxes, list) or len(boxes) > 8 or not all(valid_box(box) for box in boxes):
+            raise ValueError("holds free_boxes는 [x0, y0, x1, y1](0~1) 상자 최대 8개의 목록입니다(구간 안에서도 움직이는 곳).")
+        hold_image = Path(item["image_path"])
+        if not hold_image.is_absolute() or not hold_image.resolve().is_relative_to(image_root):
+            raise ValueError("holds 이미지는 실행 폴더 안의 절대 경로여야 합니다.")
+        hold_image = hold_image.resolve(strict=True)
+        with hold_image.open("rb") as stream:
+            holds.append({"path": str(hold_image), "sha256": hashlib.file_digest(stream, "sha256").hexdigest(),
+                          "from": float(item["from"]), "to": float(item["to"]), "strength": float(strength),
+                          "free_boxes": [[float(v) for v in box] for box in boxes]})
+    if holds and anchor_end is None:
+        raise ValueError("holds는 anchor_end(키프레임 경로)와 함께 사용합니다.")
     refine = value.get("refine", False)
     if not isinstance(refine, bool):
         raise ValueError("refine은 true 또는 false입니다(LTX 2단계: 미리보기 크기로 동작을 만들고 두 배 크기로 다듬기).")
@@ -543,6 +569,7 @@ def normalize(value):
             **({"keyframes": keyframes} if keyframes else {}),
             **({"lock_background": float(lock)} if lock is not None else {}),
             **({"free_boxes": [[float(v) for v in box] for box in free_boxes]} if free_boxes else {}),
+            **({"holds": holds} if holds else {}),
             **({"profile_step": profile_step} if profile_step is not None else {}),
             **({"refine": True} if refine else {}),
             "model_profile": profile, "_model_spec": spec,

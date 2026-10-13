@@ -223,6 +223,21 @@ class ControllerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             control.normalize({**self.request, "keyframes": [{"image_path": str(image), "at": 0.5}]})
 
+    def test_holds_are_spans_of_a_checked_picture(self):
+        image = self.root / "stopped.png"
+        image.write_bytes(b"png")
+        hold = {"image_path": str(image), "from": 0.5, "to": 2, "free_boxes": [[0.0, 0.1, 0.2, 0.8]]}
+        result = control.normalize({**self.request, "anchor_end": 0.9, "holds": [hold]})
+        self.assertEqual({key: result["holds"][0][key] for key in ("from", "to", "strength", "free_boxes")},
+                         {"from": 0.5, "to": 2.0, "strength": 0.9, "free_boxes": [[0.0, 0.1, 0.2, 0.8]]})
+        self.assertEqual(len(result["holds"][0]["sha256"]), 64)
+        for bad in ([{**hold, "to": 3}], [{**hold, "from": 2}], [{**hold, "strength": 0}], [{**hold, "from": True}],
+                    [{**hold, "image_path": "x.png"}], [{**hold, "free_boxes": [[0.3, 0.2, 0.1, 0.4]]}], [hold] * 5):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                control.normalize({**self.request, "anchor_end": 0.9, "holds": bad})
+        with self.assertRaises(ValueError):
+            control.normalize({**self.request, "holds": [hold]})
+
     def test_normalize_rejects_invalid_inputs_and_scene_path_escape(self):
         cases = [None, [], {**self.request, "seed": True}, {**self.request, "seed": -1},
                  {**self.request, "preset": "unknown"}, {**self.request, "scenes": []},

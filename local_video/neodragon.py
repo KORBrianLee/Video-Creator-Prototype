@@ -276,7 +276,8 @@ def run_stage(root, work, name, request, progress, is_cancelled):
                                                    "peak_gpu_allocated_bytes": device_record.get("peak_gpu_allocated_bytes"),
                                                    "settings": device_record.get("settings"),
                                                    "timing": device_record.get("timing"), "prompt": device_record.get("prompt"),
-                                                   **{key: device_record[key] for key in ("profile", "held_background")
+                                                   **{key: device_record[key] for key in ("profile", "held_background",
+                                                                                          "held_spans", "refine")
                                                       if device_record.get(key)}})
         if name == "video_infer" and request.get("device_plan", {}).get("gpu_inference"):
             ran_on, device_record = None, {}
@@ -510,6 +511,8 @@ def generate_project(request, output_dir, cache_dir, model_dir, progress, is_can
             if request.get("lock_background"):
                 long_video["lock_background"] = {"strength": float(request["lock_background"]),
                                                  "free_boxes": request.get("free_boxes", [])}
+            if request.get("holds"):
+                long_video["holds"] = request["holds"]
     if long_video:
         settings = {**settings, **{key: long_video[key] for key in ("width", "height", "frames", "fps")}}
     shots = []

@@ -372,7 +372,7 @@ def job_digest(job_id, with_signals=True):
         if timing:
             digest["timing"] = timing
         for phase in shot.get("phases", []):
-            for key in ("profile", "held_background"):
+            for key in ("profile", "held_background", "held_spans", "refine"):
                 if (phase.get("gpu") or {}).get(key):
                     digest[key] = phase["gpu"][key]
         digest["safety_unsafe"] = (shot.get("safety") or {}).get("unsafe")
