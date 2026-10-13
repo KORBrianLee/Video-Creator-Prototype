@@ -62,25 +62,34 @@ def cpu_rope(rope, torch):
             return type(value)(to_cpu(item) for item in value)
         return value
 
-    def identity(value):
+    def snapshot(value):
         if isinstance(value, torch.Tensor):
-            return ("tensor", tuple(value.shape), value.device.type, value.data_ptr(), value._version)
+            return value.detach().cpu().clone()
         if isinstance(value, (tuple, list)):
-            return tuple(identity(item) for item in value)
+            return tuple(snapshot(item) for item in value)
         return value
 
+    def same(a, b):
+        if isinstance(a, torch.Tensor) or isinstance(b, torch.Tensor):
+            return (isinstance(a, torch.Tensor) and isinstance(b, torch.Tensor) and a.shape == b.shape
+                    and a.dtype == b.dtype and torch.equal(a, b))
+        if isinstance(a, tuple) and isinstance(b, tuple):
+            return len(a) == len(b) and all(same(x, y) for x, y in zip(a, b))
+        return a == b
+
     # Every denoising step passes the same token coordinates; the tables only change with a new pipeline call.
+    # Inference tensors have no version counter and freed memory is reused, so coordinates are compared by value.
     last = {}
 
     def cpu_forward(hidden_states, *args, **kwargs):
         device = hidden_states.device
-        signature = (hidden_states.shape[0], device.type, identity(args),
-                     tuple(sorted((name, identity(value)) for name, value in kwargs.items())))
-        if last.get("signature") == signature:
+        inputs = (hidden_states.shape[0], device.type, snapshot(args),
+                  snapshot(sorted(kwargs.items(), key=lambda item: item[0])))
+        if "inputs" in last and same(last["inputs"], inputs):
             return last["tables"]
         probe = torch.empty((hidden_states.shape[0], 0), dtype=torch.float32)
         cos, sin = forward(probe, *to_cpu(args), **{name: to_cpu(value) for name, value in kwargs.items()})
-        last.update(signature=signature, tables=(cos.to(device), sin.to(device)))
+        last.update(inputs=inputs, tables=(cos.to(device), sin.to(device)))
         return last["tables"]
 
     rope.forward = cpu_forward

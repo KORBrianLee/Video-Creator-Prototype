@@ -146,14 +146,14 @@ class ReviewStripTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.work = Path(self.temporary.name)
 
-    def video(self, width=64, height=36, name="clip"):
+    def video(self, width=64, height=36, name="clip", colour=(230, 200, 120), box=(0, 10, 8, 26)):
         from PIL import Image, ImageDraw
         from local_video import backend
         folder = self.work / name
         folder.mkdir()
         for index in range(48):
             frame = Image.new("RGB", (width, height), (20, 40, 80))
-            ImageDraw.Draw(frame).rectangle((index, 10, index + 8, 26), fill=(230, 200, 120))
+            ImageDraw.Draw(frame).rectangle((box[0] + index, box[1], box[2] + index, box[3]), fill=colour)
             frame.save(folder / f"frame_{index:03d}.png")
         video = folder / f"{name}.mp4"
         backend._encode_frames(folder, video, {"width": width, "height": height, "frames": 48, "fps": 24, "steps": 4},
@@ -182,6 +182,29 @@ class ReviewStripTests(unittest.TestCase):
         self.assertEqual(result["seconds"], [0.5, 1.5])
         with Image.open(result["path"]) as sheet:
             self.assertEqual(sheet.size, (2 * 320, 360 + 16))
+
+    def test_workers_are_found_by_their_vests_but_machines_are_not(self):
+        from PIL import Image, ImageDraw
+        frame = Image.new("RGB", (512, 288), (120, 110, 95))
+        draw = ImageDraw.Draw(frame)
+        draw.rectangle((100, 120, 111, 137), fill=(200, 255, 30))
+        draw.rectangle((100, 129, 111, 130), fill=(210, 210, 210))
+        draw.rectangle((300, 100, 420, 200), fill=(255, 110, 0))
+        draw.rectangle((200, 60, 260, 120), fill=(220, 165, 30))
+        boxes = digest.vest_boxes(frame)
+        self.assertEqual(len(boxes), 1)
+        x0, y0, x1, y1 = boxes[0]
+        self.assertTrue(x0 * 512 < 100 < 111 < x1 * 512 and y0 * 288 < 120 < 137 < y1 * 288)
+        self.assertGreaterEqual(round(x1 - x0, 6), 0.08)
+        self.assertGreaterEqual(round(y1 - y0, 6), 0.28)
+
+    def test_the_people_sheet_has_a_row_of_worker_crops_per_moment(self):
+        from PIL import Image
+        video = self.video(512, 288, "worker", colour=(200, 255, 30), box=(100, 120, 111, 137))
+        result = digest.people_sheet(video, self.work / "people.jpg", count=3)
+        self.assertEqual(result["found"], {"0.0": 1, "1.0": 1, "2.0": 1})
+        with Image.open(result["path"]) as sheet:
+            self.assertEqual(sheet.height, 3 * (160 + 14))
 
 
 class FreshDigestTests(unittest.TestCase):

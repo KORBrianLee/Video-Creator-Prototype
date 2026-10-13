@@ -70,11 +70,15 @@ class LtxStageTests(unittest.TestCase):
 
         rope = SimpleNamespace(forward=forward)
         cpu_rope(rope, torch)
-        hidden, coords = torch.zeros(1, 5, 8), torch.rand(1, 3, 100)
-        first = rope.forward(hidden, video_coords=coords)
-        self.assertIs(rope.forward(hidden, video_coords=coords)[0], first[0])
-        self.assertEqual(tuple(rope.forward(hidden, video_coords=torch.rand(1, 3, 400))[0].shape), (1, 1, 400))
-        self.assertEqual(len(computed), 2)
+        # The pipeline runs under inference mode, whose tensors have no version counter.
+        with torch.inference_mode():
+            hidden, coords = torch.zeros(1, 5, 8), torch.rand(1, 3, 100)
+            first = rope.forward(hidden, video_coords=coords)
+            self.assertIs(rope.forward(hidden, video_coords=coords)[0], first[0])
+            coords.add_(1)
+            self.assertIsNot(rope.forward(hidden, video_coords=coords)[0], first[0])
+            self.assertEqual(tuple(rope.forward(hidden, video_coords=torch.rand(1, 3, 400))[0].shape), (1, 1, 400))
+        self.assertEqual(len(computed), 3)
 
     def test_noise_is_drawn_on_the_generator_device_then_moved(self):
         import torch

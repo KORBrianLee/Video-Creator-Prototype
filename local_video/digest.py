@@ -187,6 +187,106 @@ def compare_strips(videos, target, box=(0.0, 0.0, 1.0, 1.0), seconds=(0.0, 1.0, 
     return {"path": str(target), "rows": [str(video) for video, _ in rows]}
 
 
+def vest_boxes(image, scan_width=512, largest=0.015, smallest=(0.08, 0.28)):
+    """Boxes (0-1 units) around workers found by their high-visibility vests: fluorescent lime or strongly saturated
+    orange, grouped into blobs. Blobs larger than `largest` of the frame (an orange truck, a yellow machine), much
+    wider than tall or thin as a pole are dropped; each vest box is grown up for the head and down for the legs, to at
+    least `smallest` (width, height) of the frame so a vest fragment still shows the whole worker."""
+    # A distant worker's vest is a few pixels across: shrinking the frame blends it into the jacket below the threshold.
+    scan_width = min(scan_width, image.width)
+    scan = image.convert("RGB").resize((scan_width, max(1, round(image.height * scan_width / image.width))))
+    hsv = scan.convert("HSV").load()
+    width, height = scan.size
+    vest = [[False] * width for _ in range(height)]
+    for y in range(height):
+        for x in range(width):
+            hue, sat, val = hsv[x, y]
+            # Safety orange sits at hue 10-22 (PIL 0-255); mustard and yellow machine paint at 28-36.
+            vest[y][x] = (45 <= hue < 62 and sat > 110 and val > 170) or (8 <= hue < 23 and sat > 170 and val > 150)
+    seen, boxes = set(), []
+    for y in range(height):
+        for x in range(width):
+            if not vest[y][x] or (x, y) in seen:
+                continue
+            stack, blob = [(x, y)], []
+            seen.add((x, y))
+            while stack:
+                px, py = stack.pop()
+                blob.append((px, py))
+                for nx, ny in ((px + 1, py), (px - 1, py), (px, py + 1), (px, py - 1)):
+                    if 0 <= nx < width and 0 <= ny < height and vest[ny][nx] and (nx, ny) not in seen:
+                        seen.add((nx, ny))
+                        stack.append((nx, ny))
+            xs, ys = [p[0] for p in blob], [p[1] for p in blob]
+            w, h = max(xs) - min(xs) + 1, max(ys) - min(ys) + 1
+            if len(blob) < 3 or len(blob) > largest * width * height or w > 1.6 * h + 2 or h > 3 * w + 2:
+                continue
+            x0, y0 = max(0, min(xs) - 0.6 * w) / width, max(0, min(ys) - 1.4 * h) / height
+            x1, y1 = min(width, max(xs) + 1 + 0.6 * w) / width, min(height, max(ys) + 1 + 2.8 * h) / height
+            grow_x, grow_y = max(0, smallest[0] - (x1 - x0)) / 2, max(0, smallest[1] - (y1 - y0)) / 2
+            boxes.append((max(0, x0 - grow_x), max(0, y0 - grow_y), min(1, x1 + grow_x), min(1, y1 + grow_y)))
+    # Reflective stripes split one vest into several blobs: overlapping person boxes are one worker.
+    merged = True
+    while merged:
+        merged = False
+        for i in range(len(boxes)):
+            for j in range(i + 1, len(boxes)):
+                a, b = boxes[i], boxes[j]
+                if a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]:
+                    boxes[i] = (min(a[0], b[0]), min(a[1], b[1]), max(a[2], b[2]), max(a[3], b[3]))
+                    del boxes[j]
+                    merged = True
+                    break
+            if merged:
+                break
+    return sorted(boxes)
+
+
+def people_sheet(video, target, count=6, tile_height=160, per_frame=6):
+    """Native-resolution crops of every worker found by vest colour at `count` evenly spaced moments: a row per
+    moment, labelled with seconds, so smeared bodies, vanishing props or extra people are seen without guessing
+    coordinates. Machines painted orange or lime can still show up; the person check stays visual."""
+    import imageio_ffmpeg
+    from PIL import Image, ImageDraw
+    video, target = Path(video), Path(target)
+    total, length = imageio_ffmpeg.count_frames_and_secs(str(video))
+    fps = total / length if length else 24
+    indices = sorted({min(total - 1, round(i * (total - 1) / max(count - 1, 1))) for i in range(count)})
+    folder = Path(tempfile.mkdtemp(prefix="people-", dir=target.parent))
+    rows = []
+    try:
+        flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+        select = "+".join(f"eq(n\\,{i})" for i in indices)
+        subprocess.run([imageio_ffmpeg.get_ffmpeg_exe(), "-nostdin", "-v", "error", "-i", str(video),
+                        "-vf", f"select='{select}'", "-vsync", "0", str(folder / "p%03d.png")],
+                       capture_output=True, timeout=300, creationflags=flags)
+        for index, path in zip(indices, sorted(folder.glob("p*.png"))):
+            with Image.open(path) as frame:
+                frame = frame.convert("RGB")
+                crops = []
+                for x0, y0, x1, y1 in vest_boxes(frame)[:per_frame]:
+                    crop = frame.crop((round(x0 * frame.width), round(y0 * frame.height),
+                                       round(x1 * frame.width), round(y1 * frame.height)))
+                    scale = tile_height / max(1, crop.height)
+                    crops.append(crop.resize((max(1, round(crop.width * scale)), tile_height), Image.NEAREST))
+                rows.append((index / fps, crops))
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+    label = 14
+    sheet_width = max([sum(c.width + 4 for c in crops) for _, crops in rows] + [240])
+    sheet = Image.new("RGB", (sheet_width, len(rows) * (tile_height + label)), "black")
+    draw = ImageDraw.Draw(sheet)
+    for r, (second, crops) in enumerate(rows):
+        y = r * (tile_height + label)
+        draw.text((4, y + 1), f"{second:.1f}s  {len(crops)} found", fill="white")
+        x = 0
+        for crop in crops:
+            sheet.paste(crop, (x, y + label))
+            x += crop.width + 4
+    sheet.save(target, quality=92)
+    return {"path": str(target), "found": {f"{second:.1f}": len(crops) for second, crops in rows}}
+
+
 def count_frames(video):
     import imageio_ffmpeg
     try:

@@ -75,6 +75,9 @@ def main():
     compare.add_argument("--box", default="0,0,1,1", help="x0,y0,x1,y1 (0~1)")
     compare.add_argument("--at", default="0,1,2,3", help="초 목록(쉼표)")
     compare.add_argument("--width", type=int, default=320, help="타일 폭(px)")
+    people = sub.add_parser("people", help="판정용 사람 시트: 형광 조끼로 찾은 작업자를 시점별로 원해상도 확대(뭉개짐·소품 사라짐 확인)")
+    people.add_argument("video", help="작업 ID 또는 영상 경로")
+    people.add_argument("--count", type=int, default=6)
     cleanup = sub.add_parser("clean", help="차수 끝 저장공간 정리: 지울 목록만 보여 주고 --apply일 때 지움(STATE.json에 적힌 작업·대기/실행 중 작업·모델은 남김)")
     cleanup.add_argument("--apply", action="store_true")
     cleanup.add_argument("--days", type=float, default=3, help="기록되지 않은 완료 작업과 클립 캐시를 남겨 둘 기간(일)")
@@ -148,6 +151,14 @@ def main():
             target = control.runtime_path(root, "tmp", f"compare-{time.strftime('%H%M%S')}.jpg")
             result = compare_strips(videos, target, tuple(float(v) for v in args.box.split(",")),
                                     tuple(float(v) for v in args.at.split(",")), args.width)
+        elif args.action == "people":
+            import re
+            import time
+            from local_video.digest import people_sheet
+            root = control.load_config()[1]
+            video = control.job_path(args.video) / "output" / "video.mp4" if re.fullmatch(r"[0-9a-f]{12}", args.video) else Path(args.video)
+            name = video.parent.parent.name if video.name == "video.mp4" else video.stem
+            result = people_sheet(video, control.runtime_path(root, "tmp", f"people-{name}-{time.strftime('%H%M%S')}.jpg"), args.count)
         elif args.action == "clean":
             from local_video.cleanup import clean
             result = clean(control.load_config()[1], args.days, args.apply, refresh=control.status)
