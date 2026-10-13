@@ -167,6 +167,11 @@ class LtxTests(unittest.TestCase):
             self.assertEqual(settings["frames"], 361)
         self.assertEqual((ltx.settings_for(8)["width"], ltx.settings_for(8)["height"]), (512, 320))
 
+    def test_longer_prompts_are_read_only_when_asked_for(self):
+        from local_video import ltx
+        self.assertEqual(ltx.settings_for(15)["max_sequence_length"], 128)
+        self.assertEqual(ltx.settings_for(15, "preview", "16:9", 256)["max_sequence_length"], 256)
+
     def test_lock_and_install_only_for_intel_gpus(self):
         lock = json.loads((installer.SOURCE / "ltx.lock.json").read_text(encoding="utf-8"))
         self.assertTrue(all(len(item["sha256"]) == 64 for item in lock["files"]))

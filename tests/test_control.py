@@ -151,6 +151,13 @@ class ControllerTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 control.normalize({**self.request, "aspect": bad})
 
+    def test_text_tokens_are_128_unless_256_is_asked_for(self):
+        self.assertNotIn("text_tokens", control.normalize(self.request))
+        self.assertEqual(control.normalize({**self.request, "text_tokens": 256})["text_tokens"], 256)
+        for bad in (64, 512, True, "256"):
+            with self.assertRaises(ValueError):
+                control.normalize({**self.request, "text_tokens": bad})
+
     def test_anchor_end_image_needs_anchor_and_a_runtime_path(self):
         image = self.root / "end.png"
         image.write_bytes(b"png")

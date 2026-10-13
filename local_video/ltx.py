@@ -19,11 +19,13 @@ SIZES = {("16:10", "preview"): (512, 320), ("16:10", "quality"): (768, 448),
          ("16:9", "preview"): (512, 288), ("16:9", "quality"): (1024, 576)}
 
 
-def settings_for(duration, preset="preview", aspect="16:10"):
+# Prompt tokens the T5 encoder reads: 128 is the diffusers default (about 90 words, the rest is cut off);
+# the official LTX-Video pipeline encodes up to 256 (about 180 words).
+def settings_for(duration, preset="preview", aspect="16:10", text_tokens=128):
     width, height = SIZES[(aspect, "quality" if preset == "quality" else "preview")]
     return {"width": width, "height": height, "frames": int(duration) * 24 + 1, "fps": 24,
             "timesteps": TIMESTEPS, "guidance_scale": 1.0, "decode_timestep": 0.05, "decode_noise_scale": 0.025,
-            "max_sequence_length": 128}
+            "max_sequence_length": text_tokens}
 
 
 def installed(root, source):

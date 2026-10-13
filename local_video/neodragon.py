@@ -489,7 +489,8 @@ def generate_project(request, output_dir, cache_dir, model_dir, progress, is_can
         long_video = skyreels.settings_for(choice.get("total_memory_bytes"), duration, request.get("preset", "preview"))
     elif selected["model_tier"] == "ltx":
         from . import ltx
-        long_video = ltx.settings_for(duration, request.get("preset", "preview"), request.get("aspect", "16:10"))
+        long_video = ltx.settings_for(duration, request.get("preset", "preview"), request.get("aspect", "16:10"),
+                                      request.get("text_tokens", 128))
         if request.get("anchor_end"):
             long_video["anchor_end"] = float(request["anchor_end"])
             if request.get("anchor_end_image"):

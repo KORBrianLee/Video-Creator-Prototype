@@ -452,6 +452,9 @@ def normalize(value):
     aspect = value.get("aspect", "16:10")
     if aspect not in ("16:10", "16:9"):
         raise ValueError("aspect는 16:10(기본) 또는 16:9입니다. 16:9는 LTX 계층에서 512x288(quality 1024x576)로 만든다.")
+    text_tokens = value.get("text_tokens", 128)
+    if isinstance(text_tokens, bool) or text_tokens not in (128, 256):
+        raise ValueError("text_tokens는 128(기본, 약 90단어) 또는 256(약 180단어)입니다. LTX가 읽는 프롬프트 길이다.")
     keyframes = []
     raw_keyframes = value.get("keyframes", [])
     if not isinstance(raw_keyframes, list) or len(raw_keyframes) > 4:
@@ -508,6 +511,7 @@ def normalize(value):
             **({"anchor_end_image": anchor_end_image} if anchor_end_image else {}),
             **({"cond_noise": float(cond_noise)} if cond_noise is not None else {}),
             **({"aspect": aspect} if aspect != "16:10" else {}),
+            **({"text_tokens": int(text_tokens)} if text_tokens != 128 else {}),
             **({"keyframes": keyframes} if keyframes else {}),
             "model_profile": profile, "_model_spec": spec,
             "model_revision": hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest(),
