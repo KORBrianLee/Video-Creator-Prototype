@@ -242,36 +242,50 @@ def vest_boxes(image, scan_width=512, largest=0.015, smallest=(0.08, 0.28)):
     return sorted(boxes)
 
 
-def people_sheet(video, target, count=6, tile_height=160, per_frame=6):
-    """Native-resolution crops of every worker found by vest colour at `count` evenly spaced moments: a row per
-    moment, labelled with seconds, so smeared bodies, vanishing props or extra people are seen without guessing
-    coordinates. Machines painted orange or lime can still show up; the person check stays visual."""
+def moments(video, count, scratch):
+    """(seconds, RGB frame at native size) at `count` evenly spaced moments, from one ffmpeg pass."""
     import imageio_ffmpeg
-    from PIL import Image, ImageDraw
-    video, target = Path(video), Path(target)
+    from PIL import Image
     total, length = imageio_ffmpeg.count_frames_and_secs(str(video))
     fps = total / length if length else 24
     indices = sorted({min(total - 1, round(i * (total - 1) / max(count - 1, 1))) for i in range(count)})
-    folder = Path(tempfile.mkdtemp(prefix="people-", dir=target.parent))
-    rows = []
+    folder = Path(tempfile.mkdtemp(prefix="moments-", dir=scratch))
     try:
         flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
         select = "+".join(f"eq(n\\,{i})" for i in indices)
         subprocess.run([imageio_ffmpeg.get_ffmpeg_exe(), "-nostdin", "-v", "error", "-i", str(video),
-                        "-vf", f"select='{select}'", "-vsync", "0", str(folder / "p%03d.png")],
+                        "-vf", f"select='{select}'", "-vsync", "0", str(folder / "m%03d.png")],
                        capture_output=True, timeout=300, creationflags=flags)
-        for index, path in zip(indices, sorted(folder.glob("p*.png"))):
+        frames = []
+        for index, path in zip(indices, sorted(folder.glob("m*.png"))):
             with Image.open(path) as frame:
-                frame = frame.convert("RGB")
-                crops = []
-                for x0, y0, x1, y1 in vest_boxes(frame)[:per_frame]:
-                    crop = frame.crop((round(x0 * frame.width), round(y0 * frame.height),
-                                       round(x1 * frame.width), round(y1 * frame.height)))
-                    scale = tile_height / max(1, crop.height)
-                    crops.append(crop.resize((max(1, round(crop.width * scale)), tile_height), Image.NEAREST))
-                rows.append((index / fps, crops))
+                frames.append((index / fps, frame.convert("RGB")))
+        return frames
     finally:
         shutil.rmtree(folder, ignore_errors=True)
+
+
+def people_counts(video, scratch, count=8):
+    """Workers found by vest colour at `count` evenly spaced moments. A count that drops mid-clip or differs from
+    the script points at a vanished, half-cut or added worker; cones and lime-lit machines can add one."""
+    return [len(vest_boxes(frame)) for _, frame in moments(video, count, scratch)]
+
+
+def people_sheet(video, target, count=6, tile_height=160, per_frame=6):
+    """Native-resolution crops of every worker found by vest colour at `count` evenly spaced moments: a row per
+    moment, labelled with seconds, so smeared bodies, vanishing props or extra people are seen without guessing
+    coordinates. Machines painted orange or lime can still show up; the person check stays visual."""
+    from PIL import Image, ImageDraw
+    target = Path(target)
+    rows = []
+    for second, frame in moments(video, count, target.parent):
+        crops = []
+        for x0, y0, x1, y1 in vest_boxes(frame)[:per_frame]:
+            crop = frame.crop((round(x0 * frame.width), round(y0 * frame.height),
+                               round(x1 * frame.width), round(y1 * frame.height)))
+            scale = tile_height / max(1, crop.height)
+            crops.append(crop.resize((max(1, round(crop.width * scale)), tile_height), Image.NEAREST))
+        rows.append((second, crops))
     label = 14
     sheet_width = max([sum(c.width + 4 for c in crops) for _, crops in rows] + [240])
     sheet = Image.new("RGB", (sheet_width, len(rows) * (tile_height + label)), "black")
@@ -383,6 +397,7 @@ def job_digest(job_id, with_signals=True):
             signals = frame_signals(video, root / "tmp")
             digest["warnings"] = signals["warnings"] + notes
             digest["motion"] = signals["motion"]
+            digest["people"] = people_counts(video, root / "tmp")
             digest["luma"] = signals["luma"]
         elif notes:
             digest["warnings"] = notes

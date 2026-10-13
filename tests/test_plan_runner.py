@@ -205,6 +205,8 @@ class ReviewStripTests(unittest.TestCase):
         self.assertEqual(result["found"], {"0.0": 1, "1.0": 1, "2.0": 1})
         with Image.open(result["path"]) as sheet:
             self.assertEqual(sheet.height, 3 * (160 + 14))
+        self.assertEqual(digest.people_counts(video, self.work, count=4), [1, 1, 1, 1])
+        self.assertEqual(digest.people_counts(self.video(name="nobody"), self.work, count=2), [0, 0])
 
 
 class FreshDigestTests(unittest.TestCase):
