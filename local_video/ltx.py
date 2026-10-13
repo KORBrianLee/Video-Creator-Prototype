@@ -19,12 +19,13 @@ SIZES = {("16:10", "preview"): (512, 320), ("16:10", "quality"): (768, 448),
          ("16:9", "preview"): (512, 288), ("16:9", "quality"): (1024, 576)}
 
 
-def vae_tiling(height, decode="safe"):
-    """VAE decode tiles (sample pixels and frames). "safe" is what 15 s clips were verified with on Iris Xe: one
-    whole-clip dispatch outlasted the GPU watchdog (DEVICE_LOST), so tiles are small, but the 8-frame stride over
-    16-frame tiles decodes every latent frame three times and the 192 px stride adds half again. "lean" decodes
-    frames up to 320 px high in one row and steps 16 frames over 24-frame tiles: about half the work, with
-    larger tiles that still have to prove themselves against the watchdog and shared memory."""
+def vae_tiling(height, decode="lean"):
+    """VAE decode tiles (sample pixels and frames). One whole-clip dispatch outlasted the Iris Xe GPU watchdog
+    (DEVICE_LOST), so the clip is decoded in blended tiles. "safe" (small tiles, 8-frame stride over 16-frame tiles)
+    decodes every latent frame three times and the 192 px stride adds half again. "lean" decodes frames up to 320 px
+    high in one row and steps 16 frames over 24-frame tiles, with the same 64 px and 8-frame blends: on a 15 s
+    512x288 clip it decoded in 440 s against 939-1396 s, at the same peak memory and without visible seams at tile
+    edges or stride frames. Taller frames keep the safe tiles."""
     if decode == "lean" and height <= 320:
         return {"tile_sample_min_height": height, "tile_sample_min_width": 256, "tile_sample_min_num_frames": 24,
                 "tile_sample_stride_height": height, "tile_sample_stride_width": 192, "tile_sample_stride_num_frames": 16}
@@ -34,7 +35,7 @@ def vae_tiling(height, decode="safe"):
 
 # Prompt tokens the T5 encoder reads: 128 is the diffusers default (about 90 words, the rest is cut off);
 # the official LTX-Video pipeline encodes up to 256 (about 180 words).
-def settings_for(duration, preset="preview", aspect="16:10", text_tokens=128, decode="safe"):
+def settings_for(duration, preset="preview", aspect="16:10", text_tokens=128, decode="lean"):
     width, height = SIZES[(aspect, "quality" if preset == "quality" else "preview")]
     return {"width": width, "height": height, "frames": int(duration) * 24 + 1, "fps": 24,
             "timesteps": TIMESTEPS, "guidance_scale": 1.0, "decode_timestep": 0.05, "decode_noise_scale": 0.025,

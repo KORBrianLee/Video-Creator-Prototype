@@ -103,6 +103,47 @@ def motion_warnings(motion):
     return warnings
 
 
+def review_strip(video, target, box=(0.0, 0.0, 1.0, 1.0), start=0.0, end=None, count=8, columns=4, width=320):
+    """Zoomed time strip for judging a key action: `count` evenly spaced frames between `start` and `end` seconds,
+    cropped to `box` (0-1 units) and tiled with second labels, so a worker stepping out from behind an object or a
+    short reverse can be checked on one image instead of the whole video."""
+    import imageio_ffmpeg
+    from PIL import Image, ImageDraw
+    video, target = Path(video), Path(target)
+    total, seconds = imageio_ffmpeg.count_frames_and_secs(str(video))
+    fps = total / seconds if seconds else 24
+    end = seconds if end is None else min(end, seconds)
+    times = [start + (end - start) * i / max(count - 1, 1) for i in range(count)]
+    indices = sorted({min(total - 1, max(0, round(t * fps))) for t in times})
+    folder = Path(tempfile.mkdtemp(prefix="strip-", dir=target.parent))
+    tiles = []
+    try:
+        flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+        select = "+".join(f"eq(n\\,{i})" for i in indices)
+        subprocess.run([imageio_ffmpeg.get_ffmpeg_exe(), "-nostdin", "-v", "error", "-i", str(video),
+                        "-vf", f"select='{select}'", "-vsync", "0", str(folder / "f%03d.png")],
+                       capture_output=True, timeout=300, creationflags=flags)
+        for path in sorted(folder.glob("f*.png")):
+            with Image.open(path) as image:
+                w, h = image.size
+                crop = image.convert("RGB").crop((round(box[0] * w), round(box[1] * h), round(box[2] * w), round(box[3] * h)))
+                tiles.append(crop.resize((width, max(1, round(crop.height * width / crop.width))), Image.LANCZOS))
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+    if not tiles:
+        raise RuntimeError("영상에서 프레임을 꺼내지 못했습니다.")
+    columns = min(columns, len(tiles))
+    tile_h = tiles[0].height + 16
+    sheet = Image.new("RGB", (columns * width, (len(tiles) + columns - 1) // columns * tile_h), "black")
+    draw = ImageDraw.Draw(sheet)
+    for k, (tile, index) in enumerate(zip(tiles, indices)):
+        x, y = k % columns * width, k // columns * tile_h
+        sheet.paste(tile, (x, y))
+        draw.text((x + 4, y + tile.height + 2), f"{index / fps:.1f}s", fill="white")
+    sheet.save(target, quality=90)
+    return {"path": str(target), "seconds": [round(i / fps, 1) for i in indices[:len(tiles)]]}
+
+
 def count_frames(video):
     import imageio_ffmpeg
     try:

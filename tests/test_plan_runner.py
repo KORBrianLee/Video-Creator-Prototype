@@ -138,6 +138,42 @@ class MotionSignalTests(unittest.TestCase):
         self.assertEqual(digest.motion_warnings(tilting), [f"camera_moved: fit {tilting['camera_fit']}"])
 
 
+class ReviewStripTests(unittest.TestCase):
+    def setUp(self):
+        parent = Path(os.environ["TEMP"]) / "strip-tests"
+        parent.mkdir(parents=True, exist_ok=True)
+        self.temporary = tempfile.TemporaryDirectory(dir=parent)
+        self.addCleanup(self.temporary.cleanup)
+        self.work = Path(self.temporary.name)
+
+    def video(self):
+        from PIL import Image, ImageDraw
+        from local_video import backend
+        for index in range(48):
+            frame = Image.new("RGB", (64, 36), (20, 40, 80))
+            ImageDraw.Draw(frame).rectangle((index, 10, index + 8, 26), fill=(230, 200, 120))
+            frame.save(self.work / f"frame_{index:03d}.png")
+        video = self.work / "clip.mp4"
+        backend._encode_frames(self.work, video, {"width": 64, "height": 36, "frames": 48, "fps": 24, "steps": 4},
+                               lambda: False)
+        return video
+
+    def test_frames_across_the_span_are_tiled_with_their_seconds(self):
+        from PIL import Image
+        result = digest.review_strip(self.video(), self.work / "strip.jpg", count=4)
+        self.assertEqual(result["seconds"], [0.0, 0.7, 1.3, 2.0])
+        with Image.open(result["path"]) as sheet:
+            self.assertEqual(sheet.size, (4 * 320, 180 + 16))
+
+    def test_the_box_is_magnified(self):
+        from PIL import Image
+        result = digest.review_strip(self.video(), self.work / "half.jpg", box=(0.5, 0.0, 1.0, 1.0), start=0.5, end=1.5,
+                                     count=2, columns=2)
+        self.assertEqual(result["seconds"], [0.5, 1.5])
+        with Image.open(result["path"]) as sheet:
+            self.assertEqual(sheet.size, (2 * 320, 360 + 16))
+
+
 class FreshDigestTests(unittest.TestCase):
     def test_the_digest_comes_from_a_new_process_running_the_deployed_code(self):
         calls = []

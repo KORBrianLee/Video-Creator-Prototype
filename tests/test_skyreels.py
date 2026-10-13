@@ -167,7 +167,7 @@ class LtxTests(unittest.TestCase):
             self.assertEqual(settings["frames"], 361)
         self.assertEqual((ltx.settings_for(8)["width"], ltx.settings_for(8)["height"]), (512, 320))
 
-    def test_lean_decode_tiles_cut_repeated_decoding_and_keep_the_verified_default(self):
+    def test_lean_decode_is_the_default_and_cuts_repeated_decoding(self):
         from local_video import ltx
 
         def latent_frame_decodes(frames, tiling):
@@ -178,11 +178,11 @@ class LtxTests(unittest.TestCase):
         def rows(height, tiling):
             return len(range(0, height // 32, tiling["tile_sample_stride_height"] // 32))
 
-        safe, lean = ltx.settings_for(15, "preview", "16:9")["vae_tiling"], ltx.vae_tiling(288, "lean")
-        self.assertEqual((safe["tile_sample_min_num_frames"], safe["tile_sample_stride_num_frames"]), (16, 8))
+        safe, lean = ltx.vae_tiling(288, "safe"), ltx.settings_for(15, "preview", "16:9")["vae_tiling"]
+        self.assertEqual((lean["tile_sample_min_num_frames"], lean["tile_sample_stride_num_frames"]), (24, 16))
         self.assertEqual((latent_frame_decodes(361, safe), latent_frame_decodes(361, lean)), (135, 90))
         self.assertEqual((rows(288, safe), rows(288, lean)), (2, 1))
-        self.assertEqual(ltx.vae_tiling(576, "lean"), safe)  # 1024x576 keeps the verified tiles
+        self.assertEqual(ltx.vae_tiling(576, "lean"), safe)  # 1024x576 keeps the small tiles
 
     def test_longer_prompts_are_read_only_when_asked_for(self):
         from local_video import ltx

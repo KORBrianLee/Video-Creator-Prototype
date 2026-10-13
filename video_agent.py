@@ -63,6 +63,13 @@ def main():
     move.add_argument("--shift", required=True, help="dx,dy (0~1, 화면 폭·높이 비율)")
     move.add_argument("--scale", type=float, default=1.0, help="1보다 크면 카메라 쪽으로 다가온 크기")
     move.add_argument("--pivot", help="x,y (0~1) 크기 변화 기준점(기본: 상자들의 중심)")
+    strip = sub.add_parser("strip", help="판정용 확대 시간 띠: 한 구간의 프레임을 지정 영역만 잘라 초 라벨과 함께 한 장으로(실행 폴더 tmp에 저장)")
+    strip.add_argument("video", help="작업 ID 또는 영상 경로")
+    strip.add_argument("--box", default="0,0,1,1", help="x0,y0,x1,y1 (0~1) 확대할 영역")
+    strip.add_argument("--from", dest="start", type=float, default=0.0, help="시작 초")
+    strip.add_argument("--to", dest="end", type=float, help="끝 초(기본: 영상 끝)")
+    strip.add_argument("--count", type=int, default=8)
+    strip.add_argument("--columns", type=int, default=4)
     cleanup = sub.add_parser("clean", help="차수 끝 저장공간 정리: 지울 목록만 보여 주고 --apply일 때 지움(STATE.json에 적힌 작업·대기/실행 중 작업·모델은 남김)")
     cleanup.add_argument("--apply", action="store_true")
     cleanup.add_argument("--days", type=float, default=3, help="기록되지 않은 완료 작업과 클립 캐시를 남겨 둘 기간(일)")
@@ -118,6 +125,15 @@ def main():
             result = move_object(args.frame, args.plate, args.target, [tuple(float(v) for v in box.split(",")) for box in args.box],
                                  tuple(float(v) for v in args.shift.split(",")), args.scale,
                                  tuple(float(v) for v in args.pivot.split(",")) if args.pivot else None)
+        elif args.action == "strip":
+            import re
+            import time
+            from local_video.digest import review_strip
+            root = control.load_config()[1]
+            video = control.job_path(args.video) / "output" / "video.mp4" if re.fullmatch(r"[0-9a-f]{12}", args.video) else Path(args.video)
+            target = control.runtime_path(root, "tmp", f"strip-{video.parent.parent.name if video.name == 'video.mp4' else video.stem}-{time.strftime('%H%M%S')}.jpg")
+            result = review_strip(video, target, tuple(float(v) for v in args.box.split(",")), args.start, args.end,
+                                  args.count, args.columns)
         elif args.action == "clean":
             from local_video.cleanup import clean
             result = clean(control.load_config()[1], args.days, args.apply, refresh=control.status)
