@@ -444,10 +444,12 @@ def clip_frames(request):
 
 
 def stage_time_limit(request):
-    """Seconds one stage may run: 30 minutes, growing with the clip length so 15s clips are not cut off."""
+    """Seconds one stage may run: 30 minutes, growing with the clip length so 15s clips are not cut off, and four
+    times that at double width and height (LTX quality or refine), where a 4s clip outran 32 minutes."""
     if "maximum_scene_seconds" in request:
         return request["maximum_scene_seconds"]
-    return max(1800, 20 * (clip_frames(request) or 49))
+    limit = max(1800, 20 * (clip_frames(request) or 49))
+    return limit * 4 if request.get("refine") or request.get("preset") == "quality" else limit
 
 
 def generate_project(request, output_dir, cache_dir, model_dir, progress, is_cancelled):

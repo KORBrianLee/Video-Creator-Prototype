@@ -49,6 +49,11 @@ class SiteTests(unittest.TestCase):
         self.assertEqual(neodragon.stage_time_limit({"maximum_scene_seconds": 60, "continuous": True, "duration_seconds": 15}), 60)
         self.assertEqual(neodragon.stage_time_limit({"threads": 4}), 1800)
 
+    def test_stage_time_limit_is_four_times_at_double_size(self):
+        self.assertEqual(neodragon.stage_time_limit({"continuous": True, "duration_seconds": 4, "preset": "quality"}), 7760)
+        self.assertEqual(neodragon.stage_time_limit({"continuous": True, "duration_seconds": 15, "refine": True}), 28880)
+        self.assertEqual(neodragon.stage_time_limit({"continuous": True, "duration_seconds": 15, "preset": "preview"}), 7220)
+
     def test_invalid_lengths_and_conflicting_input_rejected(self):
         for extra in [{"duration_seconds": True}, {"duration_seconds": 16}, {"continuous": "true"},
                       {"preset": "smoke"}, {"scenes": [{"prompt": "custom action"}]}]:
