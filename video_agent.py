@@ -25,8 +25,8 @@ def main():
     sub.add_parser("list")
     digest = sub.add_parser("digest", help="완료 작업의 짧은 요약과 화면 붕괴·정지 경고(에이전트용, 2KB 이하)")
     digest.add_argument("job_id")
-    plan = sub.add_parser("plan", help="고정 계획을 로컬에서 끝까지 실행하고 요약 하나만 출력(백그라운드 실행용)")
-    plan.add_argument("plan_file", type=Path)
+    plan = sub.add_parser("plan", help="고정 계획을 로컬에서 끝까지 실행하고 요약 하나만 출력(백그라운드 실행용). 여러 개면 차례로")
+    plan.add_argument("plan_file", type=Path, nargs="+")
     frames = sub.add_parser("frames", help="한 장면의 첫 프레임 후보를 시드별로 만들고 비교 이미지 하나로 묶기")
     frames.add_argument("spec_file", type=Path)
     imports = sub.add_parser("import", help="외부에서 만든 첫 프레임(예: GenerateImage, C 저장)을 실행 폴더로 옮기고 원본 삭제")
@@ -78,7 +78,9 @@ def main():
             result = job_digest(args.job_id)
         elif args.action == "plan":
             from local_video.plan_runner import main as run_plan
-            result = run_plan(args.plan_file)
+            # One job runs at a time, so plans queue here instead of in shell loops that watch for the previous end.
+            results = [run_plan(plan_file) for plan_file in args.plan_file]
+            result = results[0] if len(results) == 1 else results
         elif args.action == "frames":
             from local_video.frame_pick import main as pick_frames
             result = pick_frames(args.spec_file)
