@@ -13,6 +13,8 @@ import torch.nn.functional as functional
 from accelerate import init_empty_weights
 from safetensors.torch import load_file
 
+from .accelerator import pace
+
 
 class Int8Linear(torch.nn.Module):
     def __init__(self, original, packed_placeholder=False):
@@ -139,6 +141,10 @@ class MappedLinearTorchGPU(MappedLinearCPU):
         self.stored = self.upload(self.weight, device)
         self.stored_bias = self.bias.detach().float().to(device) if self.bias is not None else None
 
+    # Rows one GPU dispatch may multiply; more go in slices with a rest point between them (accelerator.pace), so a
+    # 1024x576 pass does not hold the GPU that also draws the desktop for a second at a time.
+    max_rows = 8192
+
     def forward(self, value):
         device = value.device
         bitwise = self.bitwise_for(device)
@@ -147,7 +153,21 @@ class MappedLinearTorchGPU(MappedLinearCPU):
         else:
             weight = self.widen(self.weight, device, bitwise)
             bias = self.bias.detach().float().to(device) if self.bias is not None else None
-        return functional.linear(value.float(), weight, bias)
+        value = value.float()
+        rows = value.numel() // max(1, value.shape[-1])
+        if rows <= self.max_rows:
+            result = functional.linear(value, weight, bias)
+            pace()
+            return result
+        flat = value.reshape(rows, value.shape[-1])
+        out = flat.new_empty((rows, weight.shape[0]))
+        for start in range(0, rows, self.max_rows):
+            part = out[start:start + self.max_rows]
+            torch.mm(flat[start:start + self.max_rows], weight.t(), out=part)
+            if bias is not None:
+                part.add_(bias)
+            pace()
+        return out.reshape(*value.shape[:-1], weight.shape[0])
 
 
 MappedLinearXPU = MappedLinearTorchGPU
@@ -187,9 +207,14 @@ class MappedConvTorchGPU(torch.nn.Module):
             frames = value.shape[2] - span + 1
             step = max(1, self.max_positions // max(1, value.shape[3] * value.shape[4]))
             if step < frames:
-                return torch.cat([conv._conv_forward(value[:, :, start:start + step + span - 1], weight, bias)
-                                  for start in range(0, frames, step)], dim=2)
-        return conv._conv_forward(value, weight, bias)
+                pieces = []
+                for start in range(0, frames, step):
+                    pieces.append(conv._conv_forward(value[:, :, start:start + step + span - 1], weight, bias))
+                    pace()
+                return torch.cat(pieces, dim=2)
+        result = conv._conv_forward(value, weight, bias)
+        pace()
+        return result
 
 
 def split_convs(module, max_positions):

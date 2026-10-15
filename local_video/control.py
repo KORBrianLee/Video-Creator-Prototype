@@ -787,8 +787,10 @@ def older_job_waiting(job_id, root, now=None):
 
 
 def worker(job_id):
-    from .resources import run_unthrottled
+    from .resources import COMPUTE_LIMIT_PCT, cap_cpu, run_unthrottled
     run_unthrottled()
+    # Stages, ffmpeg and checks started from here join the same job object, so the cap covers the whole job.
+    cap_cpu(COMPUTE_LIMIT_PCT)
     job = job_path(job_id)
     cfg, root = load_config()
     initial = read_json(job / "status.json")

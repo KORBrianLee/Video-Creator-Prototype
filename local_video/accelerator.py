@@ -211,6 +211,36 @@ def attention_budget_bytes(torch=None, device=None, discrete=False):
     return int(min(384 * resources.MIB, max(48 * resources.MIB, spare * 0.08)))
 
 
+class GpuPacer:
+    """Keeps the GPU idle for the share of time above `percent`. An integrated GPU also draws the desktop, which froze
+    while a clip held the GPU without a gap: after each `burst` seconds of work the queue is drained and the GPU
+    rests for (100 - percent)/percent of that time (11 ms per 100 ms at 90%)."""
+    def __init__(self, gpu, percent, burst=0.1, clock=None, sleep=None):
+        self.gpu, self.rest, self.burst = gpu, (100 - percent) / percent, burst
+        self.clock, self.sleep = clock or time.monotonic, sleep or time.sleep
+        self.start = self.clock()
+
+    def __call__(self):
+        if self.clock() - self.start < self.burst:
+            return
+        self.gpu.synchronize()
+        self.sleep((self.clock() - self.start) * self.rest)
+        self.start = self.clock()
+
+
+_PACER = []
+
+
+def install_pacer(pacer):
+    _PACER[:] = [pacer] if pacer else []
+
+
+def pace():
+    """A rest point between GPU dispatches; does nothing until a stage installs a GpuPacer."""
+    if _PACER:
+        _PACER[0]()
+
+
 def plain_attention(torch, query, key, value, attn_mask=None, scale=None):
     """Scores, softmax and weighted sum as three plain kernels. On Iris Xe the FP32 scaled_dot_product_attention
     kernel ran 1.7-3x slower than this (15 s at 512x288: 5.3 s against 3.1 s per layer in 512-row chunks), with
@@ -242,10 +272,14 @@ def bound_attention_memory(torch, budget=None, device_types=("xpu", "cuda"), dis
         plain = (query.device.type in plain_types and dropout_p == 0.0 and not extra
                  and (attn_mask is None or attn_mask.dtype != torch.bool))
 
-        def kernel(rows_query, mask):
+        def kernel(rows_query, mask, rows_key=key, rows_value=value):
             if plain:
-                return plain_attention(torch, rows_query, key, value, mask, scale)
-            return original(rows_query, key, value, attn_mask=mask, dropout_p=dropout_p, scale=scale, **extra)
+                result = plain_attention(torch, rows_query, rows_key, rows_value, mask, scale)
+            else:
+                result = original(rows_query, rows_key, rows_value, attn_mask=mask, dropout_p=dropout_p, scale=scale,
+                                  **extra)
+            pace()
+            return result
 
         rows, keys = query.shape[-2], key.shape[-2]
         lead = query.numel() // (rows * query.shape[-1])
@@ -264,7 +298,7 @@ def bound_attention_memory(torch, budget=None, device_types=("xpu", "cuda"), dis
             heads = []
             for h in range(0, lead, group):
                 qh, kh, vh = query[:, h:h + group], key[:, h:h + group], value[:, h:h + group]
-                heads.append(torch.cat([plain_attention(torch, qh[..., s:s + head_rows, :], kh, vh, None, scale)
+                heads.append(torch.cat([kernel(qh[..., s:s + head_rows, :], None, kh, vh)
                                         for s in range(0, rows, head_rows)], dim=-2))
             return torch.cat(heads, dim=1)
         pieces = []

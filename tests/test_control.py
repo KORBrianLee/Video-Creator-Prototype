@@ -48,9 +48,10 @@ class ControllerTests(unittest.TestCase):
         self.enterContext(patch.object(control, "APP", self.app))
         self.enterContext(patch.dict(os.environ, {"CVL_RUNTIME_DIR": "", "TEMP": str(self.root),
                                                 "TMP": str(self.root), "TMPDIR": str(self.root)}))
-        # The real clean-up would empty every process on this computer.
+        # The real clean-up would empty every process on this computer, and the real cap would hold the test run.
         self.free_memory = self.enterContext(patch("local_video.resources.free_memory",
                                                    return_value={"available_gib": [1.0, 2.5], "trimmed_processes": 3}))
+        self.cap_cpu = self.enterContext(patch("local_video.resources.cap_cpu", return_value=True))
         self.request = {"title": "검증 요청", "script": "파도가 2초간 움직인다.", "diagnostic": True,
                         "preset": "preview", "seed": 42,
                         "scenes": [{"id": "sea", "prompt": "Ocean waves roll onto a shore."}]}

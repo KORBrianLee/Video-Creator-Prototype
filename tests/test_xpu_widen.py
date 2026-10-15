@@ -53,6 +53,56 @@ class WidenTests(unittest.TestCase):
         self.assertEqual(linear_weight_bytes(torch.nn.Sequential(linear)), 64 * 48 * 2)
 
 
+class GpuPacerTests(unittest.TestCase):
+    def test_the_gpu_rests_a_ninth_of_each_burst_at_90_percent(self):
+        from types import SimpleNamespace
+        from local_video import accelerator
+        now, sleeps, syncs = [0.0], [], []
+
+        def sleep(seconds):
+            sleeps.append(round(seconds, 4))
+            now[0] += seconds
+
+        gpu = SimpleNamespace(synchronize=lambda: syncs.append(now[0]))
+        pacer = accelerator.GpuPacer(gpu, 90, burst=0.1, clock=lambda: now[0], sleep=sleep)
+        now[0] = 0.05
+        pacer()
+        self.assertEqual((sleeps, syncs), ([], []))
+        now[0] = 0.18
+        pacer()
+        self.assertEqual((sleeps, syncs), ([0.02], [0.18]))
+        try:
+            accelerator.install_pacer(pacer)
+            now[0] += 0.27
+            accelerator.pace()
+            self.assertEqual(sleeps[-1], 0.03)
+        finally:
+            accelerator.install_pacer(None)
+        accelerator.pace()
+        self.assertEqual(len(sleeps), 2)
+
+    def test_a_long_linear_runs_in_row_slices_with_a_rest_after_each(self):
+        torch = torch_or_skip(self)
+        from local_video import accelerator
+        from local_video.neodragon_quant import MappedLinearTorchGPU
+        torch.manual_seed(1)
+        linear = torch.nn.Linear(6, 5)
+        value = torch.randn(2, 7, 6)
+        expected = linear(value)
+        mapped = MappedLinearTorchGPU(linear)
+        mapped.max_rows = 4
+        rests = []
+        try:
+            accelerator.install_pacer(lambda: rests.append(1))
+            with torch.no_grad():
+                actual = mapped(value)
+        finally:
+            accelerator.install_pacer(None)
+        self.assertEqual(actual.shape, expected.shape)
+        self.assertTrue(torch.allclose(actual, expected, atol=1e-6))
+        self.assertEqual(len(rests), 4)
+
+
 class SplitConvTests(unittest.TestCase):
     def test_a_conv_split_along_time_matches_one_dispatch(self):
         torch = torch_or_skip(self)

@@ -439,6 +439,9 @@ def render(torch, device, root, first_frame, settings, prompt_embeds, mask, seed
     configs = folder / "config-0.9.5"
     accelerator.bound_attention_memory(torch, discrete=discrete)
     gpu = getattr(torch, device.type)
+    if device.type != "cpu":
+        from local_video.resources import COMPUTE_LIMIT_PCT
+        accelerator.install_pacer(accelerator.GpuPacer(gpu, COMPUTE_LIMIT_PCT))
     profile = StepProfile(torch, gpu, int(settings["profile_step"])) if settings.get("profile_step") else None
     transformer = LTXVideoTransformer3DModel.from_single_file(str(checkpoint), config=str(configs), subfolder="transformer",
                                                               torch_dtype=torch.bfloat16, local_files_only=True).eval()

@@ -21,6 +21,8 @@ PROFILE_FLOOR_GIB = {"neodragon": 3.0, "lightning": 4.5, "wan": 4.5}
 # Smallest working-set cap that completed a Neodragon scene on the 16 GB target.
 WORKING_SET_FLOOR_GIB = 5.0
 RESOURCE_KEYS = ("minimum_free_ram_gib", "reserve_ram_gib", "maximum_working_set_gib", "gpu_buffer_mib")
+# Share of the CPU and of GPU time a job may take; the rest keeps the desktop drawing (all of it froze the PC).
+COMPUTE_LIMIT_PCT = 90
 
 
 def is_auto(value):
@@ -347,6 +349,38 @@ def run_unthrottled(handle=None):
     state = State(1, 0x1 | 0x4, 0)
     target = ctypes.c_void_p(int(handle)) if handle else kernel.GetCurrentProcess()
     return bool(kernel.SetProcessInformation(target, 4, ctypes.byref(state), ctypes.sizeof(state)))
+
+
+_CPU_JOB = []
+
+
+def cap_cpu(percent):
+    """Hard-cap the CPU time of this process and every process it starts at `percent` of all logical processors
+    (a Windows job object). A clip that took every core froze the desktop; the cap leaves the rest to it."""
+    if os.name != "nt" or _CPU_JOB:
+        return bool(_CPU_JOB)
+
+    class Rate(ctypes.Structure):
+        _fields_ = [("control", ctypes.c_ulong), ("rate", ctypes.c_ulong)]
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.CreateJobObjectW.restype = ctypes.c_void_p
+    kernel.CreateJobObjectW.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p]
+    kernel.SetInformationJobObject.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_ulong]
+    kernel.AssignProcessToJobObject.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+    kernel.GetCurrentProcess.restype = ctypes.c_void_p
+    kernel.CloseHandle.argtypes = [ctypes.c_void_p]
+    job = kernel.CreateJobObjectW(None, None)
+    if not job:
+        return False
+    # JobObjectCpuRateControlInformation: ENABLE | HARD_CAP, rate in cycles per 10,000.
+    rate = Rate(0x1 | 0x4, max(1, min(10000, round(percent * 100))))
+    if not (kernel.SetInformationJobObject(job, 15, ctypes.byref(rate), ctypes.sizeof(rate))
+            and kernel.AssignProcessToJobObject(job, kernel.GetCurrentProcess())):
+        kernel.CloseHandle(job)
+        return False
+    _CPU_JOB.append(job)  # the cap lasts while the handle is open, i.e. for the life of this process
+    return True
 
 
 class CpuLimitMonitor:

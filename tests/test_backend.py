@@ -287,6 +287,27 @@ class FreeMemoryTests(unittest.TestCase):
         self.assertEqual(trimmed, [1200, 3400])
         self.assertEqual(result, {"available_gib": [1.0, 4.0], "trimmed_processes": 1})
 
+    @unittest.skipUnless(os.name == "nt", "Windows job objects")
+    def test_the_cpu_cap_puts_the_process_in_a_job_held_to_the_share(self):
+        code = "\n".join([
+            "import ctypes, sys",
+            f"sys.path.insert(0, {str(APP)!r})",
+            "from local_video import resources",
+            "assert resources.cap_cpu(90)",
+            "kernel = ctypes.WinDLL('kernel32')",
+            "class Rate(ctypes.Structure):",
+            "    _fields_ = [('control', ctypes.c_ulong), ('rate', ctypes.c_ulong)]",
+            "kernel.QueryInformationJobObject.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_ulong, ctypes.c_void_p]",
+            "kernel.IsProcessInJob.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.POINTER(ctypes.c_int)]",
+            "kernel.GetCurrentProcess.restype = ctypes.c_void_p",
+            "rate, inside = Rate(), ctypes.c_int()",
+            "job = resources._CPU_JOB[0]",
+            "assert kernel.QueryInformationJobObject(job, 15, ctypes.byref(rate), ctypes.sizeof(rate), None)",
+            "assert kernel.IsProcessInJob(kernel.GetCurrentProcess(), job, ctypes.byref(inside))",
+            "print(rate.control, rate.rate, inside.value)"])
+        result = subprocess.run([sys.executable, "-c", code], cwd=APP, capture_output=True, text=True, timeout=120)
+        self.assertEqual(result.stdout.split(), ["5", "9000", "1"], result.stderr[-500:])
+
     @unittest.skipUnless(os.name == "nt", "Windows process list")
     def test_this_process_is_in_the_process_list(self):
         from local_video import resources

@@ -115,7 +115,10 @@ def settings_for(duration, preset="preview", aspect="16:10", text_tokens=128, de
     width, height = SIZES[(aspect, "quality" if preset == "quality" and not refine else "preview")]
     settings = {"width": width, "height": height, "frames": int(duration) * 24 + 1, "fps": 24,
                 "timesteps": TIMESTEPS, "guidance_scale": 1.0, "decode_timestep": 0.05, "decode_noise_scale": 0.025,
-                "max_sequence_length": text_tokens, "vae_tiling": vae_tiling(height, decode)}
+                "max_sequence_length": text_tokens, "vae_tiling": vae_tiling(height, decode),
+                # 3D convolutions of the decode in slices of about 8 frames of a tile, each followed by a rest point,
+                # so the GPU that draws the desktop is never held for a whole tile.
+                "vae_split_positions": 8 * (384 // 4) * (256 // 4)}
     if refine:
         settings.update(width=width * 2, height=height * 2, vae_tiling=vae_tiling(height * 2, decode),
                         refine={"width": width, "height": height})
