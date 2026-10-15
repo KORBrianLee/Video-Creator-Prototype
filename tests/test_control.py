@@ -48,6 +48,9 @@ class ControllerTests(unittest.TestCase):
         self.enterContext(patch.object(control, "APP", self.app))
         self.enterContext(patch.dict(os.environ, {"CVL_RUNTIME_DIR": "", "TEMP": str(self.root),
                                                 "TMP": str(self.root), "TMPDIR": str(self.root)}))
+        # The real clean-up would empty every process on this computer.
+        self.free_memory = self.enterContext(patch("local_video.resources.free_memory",
+                                                   return_value={"available_gib": [1.0, 2.5], "trimmed_processes": 3}))
         self.request = {"title": "검증 요청", "script": "파도가 2초간 움직인다.", "diagnostic": True,
                         "preset": "preview", "seed": 42,
                         "scenes": [{"id": "sea", "prompt": "Ocean waves roll onto a shore."}]}
@@ -561,6 +564,8 @@ class ControllerTests(unittest.TestCase):
         state = control.status(jid)
         self.assertEqual(state["state"], "completed")
         self.assertEqual(state["visual_review"], "required_not_automatically_verified")
+        self.assertEqual(state["memory_after_job"]["trimmed_processes"], 3)
+        self.free_memory.assert_called_once()
         self.assertEqual(record.releases, 1)
         self.assertTrue(all(path.is_relative_to(self.root) for path in paths))
 
@@ -572,6 +577,7 @@ class ControllerTests(unittest.TestCase):
             raise RuntimeError("모의 추론기 실패")
 
         self.fake_backend(failure)
+        self.free_memory.side_effect = OSError("trim refused")
         with patch.object(control, "doctor", return_value={"ready": True, "ready_for_generation": True}), patch.object(control.sys, "stderr", io.StringIO()):
             control.worker(jid)
         self.assertEqual(control.status(jid)["state"], "failed")
@@ -602,6 +608,7 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(control.status(jid)["state"], "cancelled")
         self.assertEqual(record.releases, 1)
         self.assertEqual(record.acquires, 2)
+        self.free_memory.assert_not_called()
 
     def test_cancel_during_backend_prevents_completion_state(self):
         jid, folder = self.make_job()

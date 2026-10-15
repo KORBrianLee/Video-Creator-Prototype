@@ -278,5 +278,20 @@ class BackendTests(unittest.TestCase):
             backend._validate_flags(["engine", "--mmap", "--made-up"], "--mmap --backend")
 
 
+class FreeMemoryTests(unittest.TestCase):
+    def test_every_process_but_the_system_ones_is_trimmed_and_available_ram_is_reported(self):
+        from local_video import resources
+        trimmed = []
+        with mock.patch.object(resources, "memory_bytes", side_effect=[(16 * 2**30, 2**30), (16 * 2**30, 4 * 2**30)]):
+            result = resources.free_memory(ids=[0, 4, 1200, 3400], trim=lambda pid: trimmed.append(pid) or pid == 1200)
+        self.assertEqual(trimmed, [1200, 3400])
+        self.assertEqual(result, {"available_gib": [1.0, 4.0], "trimmed_processes": 1})
+
+    @unittest.skipUnless(os.name == "nt", "Windows process list")
+    def test_this_process_is_in_the_process_list(self):
+        from local_video import resources
+        self.assertIn(os.getpid(), resources.process_ids())
+
+
 if __name__ == "__main__":
     unittest.main()

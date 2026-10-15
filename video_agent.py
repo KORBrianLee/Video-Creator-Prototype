@@ -81,6 +81,7 @@ def main():
     cleanup = sub.add_parser("clean", help="차수 끝 저장공간 정리: 지울 목록만 보여 주고 --apply일 때 지움(STATE.json에 적힌 작업·대기/실행 중 작업·모델은 남김)")
     cleanup.add_argument("--apply", action="store_true")
     cleanup.add_argument("--days", type=float, default=3, help="기록되지 않은 완료 작업과 클립 캐시를 남겨 둘 기간(일)")
+    sub.add_parser("ram", help="RAM 정리: 비울 수 있는 모든 프로세스의 작업 집합을 비워 사용 가능 RAM을 늘림(작업이 끝날 때마다 자동 실행)")
     args = parser.parse_args()
     try:
         from local_video.storage import cache_environment
@@ -162,6 +163,9 @@ def main():
         elif args.action == "clean":
             from local_video.cleanup import clean
             result = clean(control.load_config()[1], args.days, args.apply, refresh=control.status)
+        elif args.action == "ram":
+            from local_video.resources import free_memory
+            result = free_memory()
         else:
             result = getattr(control, args.action)(args.job_id)
         print(json.dumps(result, ensure_ascii=False))

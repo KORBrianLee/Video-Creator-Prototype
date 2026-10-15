@@ -288,6 +288,34 @@ def trim_working_set(process_id):
         kernel.CloseHandle(handle)
 
 
+def process_ids():
+    """Every process ID on this computer."""
+    psapi = ctypes.WinDLL("psapi", use_last_error=True)
+    size = 1024
+    while True:
+        ids = (ctypes.c_ulong * size)()
+        used = ctypes.c_ulong()
+        if not psapi.EnumProcesses(ids, ctypes.sizeof(ids), ctypes.byref(used)):
+            return []
+        count = used.value // ctypes.sizeof(ctypes.c_ulong)
+        if count < size:
+            return list(ids[:count])
+        size *= 2
+
+
+def free_memory(ids=None, trim=None):
+    """RAM clean-up after a job: empty the working set of every process this user may trim, other apps included, so
+    idle pages move to the standby list and count as available for the next job. An app that touches them again
+    gets them back from RAM; system processes refuse the request and are skipped."""
+    if os.name != "nt":
+        return {}
+    before = memory_bytes()[1]
+    trim = trim or trim_working_set
+    trimmed = sum(bool(trim(pid)) for pid in (process_ids() if ids is None else ids) if pid > 4)
+    after = memory_bytes()[1]
+    return {"available_gib": [round(before / GIB, 2), round(after / GIB, 2)], "trimmed_processes": trimmed}
+
+
 class LowMemoryMode:
     """Trim a stage at most every `interval` seconds while RAM is tight, and count how often that happened."""
     def __init__(self, process_id, interval=10.0, trim=None):

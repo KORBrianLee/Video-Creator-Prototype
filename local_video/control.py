@@ -795,6 +795,7 @@ def worker(job_id):
         state.update(update)
         state["updated_at"] = time.time()
         write_json(job / "status.json", state)
+    ran = False
     try:
         progress({"worker_pid": os.getpid()})
         last_heartbeat = time.monotonic()
@@ -805,6 +806,7 @@ def worker(job_id):
             if time.monotonic() - last_heartbeat > 15:
                 progress({"stage": "waiting_for_local_engine"})
                 last_heartbeat = time.monotonic()
+        ran = True
         if cancelled():
             raise InterruptedError("취소됐습니다.")
         request = read_json(job / "request.json")
@@ -850,7 +852,15 @@ def worker(job_id):
         progress({"state": "cancelled" if cancelled() or isinstance(exc, InterruptedError) else "failed", "stage": "stopped", "error": str(exc)[:2000], "completed_at": time.time()})
         print(repr(exc), file=sys.stderr, flush=True)
     finally:
-        lock.release()
+        try:
+            if ran:
+                # Every job ends with a RAM clean-up while it still holds the engine, so the next job starts on it.
+                from local_video.resources import free_memory
+                progress({"memory_after_job": free_memory()})
+        except OSError as exc:
+            print(f"RAM clean-up failed: {exc!r}", file=sys.stderr, flush=True)
+        finally:
+            lock.release()
 
 def cancel(job_id):
     job = job_path(job_id)
