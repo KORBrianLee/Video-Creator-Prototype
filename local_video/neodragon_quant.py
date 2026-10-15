@@ -170,11 +170,36 @@ class MappedConvTorchGPU(torch.nn.Module):
         original.register_parameter("weight", None)
         original.register_parameter("bias", None)
 
+    # Output positions (frames x height x width) one GPU dispatch may cover; None keeps one dispatch per call.
+    # A dispatch that outlasts the Windows GPU watchdog (about 2 s) ends in DEVICE_LOST, which is what limits
+    # the VAE decode tile size on Iris Xe.
+    max_positions = None
+
     def forward(self, value):
         device = value.device
         weight = MappedLinearTorchGPU.widen(self.weight_cpu, device)
         bias = self.bias_cpu.to(device) if self.bias_cpu is not None else None
-        return self.original._conv_forward(value.float(), weight, bias)
+        conv, value = self.original, value.float()
+        if self.max_positions and value.dim() == 5 and conv.stride[0] == 1 and conv.dilation[0] == 1 \
+                and conv.padding[0] == 0:
+            # Output frame t reads input frames t .. t + span - 1, so overlapping input slices give the same result.
+            span = conv.kernel_size[0]
+            frames = value.shape[2] - span + 1
+            step = max(1, self.max_positions // max(1, value.shape[3] * value.shape[4]))
+            if step < frames:
+                return torch.cat([conv._conv_forward(value[:, :, start:start + step + span - 1], weight, bias)
+                                  for start in range(0, frames, step)], dim=2)
+        return conv._conv_forward(value, weight, bias)
+
+
+def split_convs(module, max_positions):
+    """Cap the output positions of each streamed 3D convolution per GPU dispatch (see MappedConvTorchGPU)."""
+    count = 0
+    for child in module.modules():
+        if isinstance(child, MappedConvTorchGPU):
+            child.max_positions = max_positions
+            count += 1
+    return count
 
 
 def stream_convs(module):

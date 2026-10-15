@@ -53,6 +53,27 @@ class WidenTests(unittest.TestCase):
         self.assertEqual(linear_weight_bytes(torch.nn.Sequential(linear)), 64 * 48 * 2)
 
 
+class SplitConvTests(unittest.TestCase):
+    def test_a_conv_split_along_time_matches_one_dispatch(self):
+        torch = torch_or_skip(self)
+        from local_video.neodragon_quant import MappedConvTorchGPU, split_convs
+        torch.manual_seed(3)
+        model = torch.nn.Sequential(torch.nn.Conv3d(4, 6, (3, 3, 3), padding=(0, 1, 1)),
+                                    torch.nn.Conv3d(6, 5, (3, 3, 3), stride=(2, 1, 1), padding=(0, 1, 1)))
+        value = torch.randn(1, 4, 11, 5, 7)
+        with torch.no_grad():
+            expected = model(value)
+            wrapped = torch.nn.Sequential(MappedConvTorchGPU(model[0]), MappedConvTorchGPU(model[1]))
+            self.assertEqual(split_convs(wrapped, 2 * 5 * 7), 2)
+            slices = []
+            first = wrapped[0].original._conv_forward
+            wrapped[0].original._conv_forward = lambda value, *rest: slices.append(value.shape[2]) or first(value, *rest)
+            actual = wrapped(value)
+        # Two output frames per dispatch read four input frames; the strided conv is left whole.
+        self.assertEqual(slices, [4, 4, 4, 4, 3])
+        self.assertTrue(torch.allclose(actual, expected, atol=1e-5))
+
+
 class BoundedAttentionTests(unittest.TestCase):
     def test_chunked_attention_matches_full_attention_with_and_without_mask(self):
         torch = torch_or_skip(self)

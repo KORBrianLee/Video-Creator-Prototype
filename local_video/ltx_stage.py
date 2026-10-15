@@ -429,7 +429,8 @@ def render(torch, device, root, first_frame, settings, prompt_embeds, mask, seed
     from PIL import Image
     from diffusers import (AutoencoderKLLTXVideo, FlowMatchEulerDiscreteScheduler, LTXImageToVideoPipeline,
                            LTXVideoTransformer3DModel)
-    from local_video.neodragon_quant import float_non_linear_parameters, linear_weight_bytes, stream_convs, stream_linears
+    from local_video.neodragon_quant import (float_non_linear_parameters, linear_weight_bytes, split_convs, stream_convs,
+                                             stream_linears)
     from local_video import readonly_weights
     load_start = time.monotonic()
     readonly_weights.install()
@@ -451,6 +452,9 @@ def render(torch, device, root, first_frame, settings, prompt_embeds, mask, seed
                                                  torch_dtype=torch.bfloat16, local_files_only=True).eval()
     # 2.3 GB BF16 (4.6 GB FP32): convolution and linear weights stay on the CPU side, widened per call.
     stream_convs(vae)
+    if settings.get("vae_split_positions"):
+        # Larger decode tiles stay under the GPU watchdog when each 3D convolution is dispatched in time slices.
+        split_convs(vae, int(settings["vae_split_positions"]))
     stream_linears(vae, None, device)
     float_non_linear_parameters(vae, device)
     fp32_dtype(vae, torch)
