@@ -252,7 +252,11 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual({key: result["holds"][0][key] for key in ("from", "to", "strength", "free_boxes")},
                          {"from": 0.5, "to": 2.0, "strength": 0.9, "free_boxes": [[0.0, 0.1, 0.2, 0.8]]})
         self.assertEqual(len(result["holds"][0]["sha256"]), 64)
+        self.assertNotIn("boxes", result["holds"][0])
+        region = control.normalize({**self.request, "anchor_end": 0.9, "holds": [{**hold, "boxes": [[0.6, 0.3, 0.8, 0.6]]}]})
+        self.assertEqual(region["holds"][0]["boxes"], [[0.6, 0.3, 0.8, 0.6]])
         for bad in ([{**hold, "to": 3}], [{**hold, "from": 2}], [{**hold, "strength": 0}], [{**hold, "from": True}],
+                    [{**hold, "boxes": [[0.8, 0.3, 0.6, 0.6]]}], [{**hold, "boxes": "all"}],
                     [{**hold, "image_path": "x.png"}], [{**hold, "free_boxes": [[0.3, 0.2, 0.1, 0.4]]}], [hold] * 5):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 control.normalize({**self.request, "anchor_end": 0.9, "holds": bad})

@@ -516,6 +516,9 @@ def normalize(value):
         boxes = item.get("free_boxes", [])
         if not isinstance(boxes, list) or len(boxes) > 8 or not all(valid_box(box) for box in boxes):
             raise ValueError("holds free_boxes는 [x0, y0, x1, y1](0~1) 상자 최대 8개의 목록입니다(구간 안에서도 움직이는 곳).")
+        region = item.get("boxes", [])
+        if not isinstance(region, list) or len(region) > 8 or not all(valid_box(box) for box in region):
+            raise ValueError("holds boxes는 [x0, y0, x1, y1](0~1) 상자 최대 8개의 목록입니다(그 영역만 묶음, 생략하면 화면 전체).")
         hold_image = Path(item["image_path"])
         if not hold_image.is_absolute() or not hold_image.resolve().is_relative_to(image_root):
             raise ValueError("holds 이미지는 실행 폴더 안의 절대 경로여야 합니다.")
@@ -523,7 +526,8 @@ def normalize(value):
         with hold_image.open("rb") as stream:
             holds.append({"path": str(hold_image), "sha256": hashlib.file_digest(stream, "sha256").hexdigest(),
                           "from": float(item["from"]), "to": float(item["to"]), "strength": float(strength),
-                          "free_boxes": [[float(v) for v in box] for box in boxes]})
+                          "free_boxes": [[float(v) for v in box] for box in boxes],
+                          **({"boxes": [[float(v) for v in box] for box in region]} if region else {})})
     if holds and anchor_end is None:
         raise ValueError("holds는 anchor_end(키프레임 경로)와 함께 사용합니다.")
     refine = value.get("refine", False)

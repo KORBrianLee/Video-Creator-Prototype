@@ -35,6 +35,11 @@ class HeldBackgroundTests(unittest.TestCase):
         self.assertEqual(ltx.held_tokens([[1, 0], [0, 1]], 3), [4, 7, 8, 11])
         self.assertEqual(ltx.held_tokens([[1, 0], [0, 1]], 5, range(2, 4)), [8, 11, 12, 15])
 
+    def test_a_region_hold_takes_the_cells_its_boxes_touch_minus_the_free_ones(self):
+        from local_video import ltx
+        self.assertEqual(ltx.box_cells(128, 64, [(0.2, 0.0, 0.7, 0.6)], [(0.0, 0.0, 0.3, 0.5)]),
+                         [[0, 0, 1, 0], [1, 1, 1, 0]])
+
     def test_a_span_holds_the_latent_frames_that_lie_inside_it(self):
         from local_video import ltx
         # 15 s at 24 fps: 46 latent frames; latent frame k carries video frames 8k-7 to 8k.

@@ -76,6 +76,20 @@ def background_cells(first, others, width, height, free_boxes=(), threshold=3.0,
             for r in range(rows)]
 
 
+def box_cells(width, height, boxes, free_boxes=()):
+    """Latent cells (1 = hold) touching `boxes` (0-1 units) but none of `free_boxes`: a hold limited to one region,
+    such as a small worker whose signal pose keyframes alone do not keep."""
+    rows, cols = height // LATENT_CELL, width // LATENT_CELL
+
+    def touching(r, c, box):
+        x0, y0, x1, y1 = box
+        return (c * LATENT_CELL < x1 * width and (c + 1) * LATENT_CELL > x0 * width
+                and r * LATENT_CELL < y1 * height and (r + 1) * LATENT_CELL > y0 * height)
+
+    return [[int(any(touching(r, c, box) for box in boxes) and not any(touching(r, c, box) for box in free_boxes))
+             for c in range(cols)] for r in range(rows)]
+
+
 def held_tokens(cells, latent_frames, frames=None):
     """Packed token positions (frame-major, then rows, then columns) of the held cells in the latent `frames`, by
     default every latent frame after the first, which the opening-frame condition already holds."""

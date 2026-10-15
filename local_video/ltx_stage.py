@@ -504,7 +504,10 @@ def render(torch, device, root, first_frame, settings, prompt_embeds, mask, seed
                 cells = ltx.background_cells(first_frame, others, width, height, lock.get("free_boxes", ()))
                 held["held_background"] = hold_background(pipe, cells, float(lock["strength"]), latent_frames, torch)
             for hold in settings.get("holds", []):
-                cells = ltx.background_cells(hold["path"], [], width, height, hold.get("free_boxes", ()))
+                if hold.get("boxes"):
+                    cells = ltx.box_cells(width, height, hold["boxes"], hold.get("free_boxes", ()))
+                else:
+                    cells = ltx.background_cells(hold["path"], [], width, height, hold.get("free_boxes", ()))
                 picture = Image.open(hold["path"]).convert("RGB").resize((width, height))
                 span = ltx.latent_span(hold["from"], hold["to"], settings["fps"], latent_frames)
                 held.setdefault("held_spans", []).append(
