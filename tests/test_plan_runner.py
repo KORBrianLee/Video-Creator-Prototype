@@ -209,6 +209,17 @@ class ReviewStripTests(unittest.TestCase):
         self.assertEqual(digest.people_counts(self.video(name="nobody"), self.work, count=2), [0, 0])
 
 
+class JobDigestTests(unittest.TestCase):
+    def test_the_ram_clean_up_after_a_job_is_in_the_digest(self):
+        state = {"state": "failed", "stage": "stopped", "error": "x", "started_at": 1.0, "updated_at": 5.0,
+                 "memory_after_job": {"available_gib": [0.3, 4.0], "trimmed_processes": 150}}
+        with mock.patch("local_video.control.status", return_value=state), \
+                mock.patch("local_video.control.load_config", return_value=({}, Path(os.environ["TEMP"]))):
+            result = digest.job_digest("abc", with_signals=False)
+        self.assertEqual(result["memory_after_job"], state["memory_after_job"])
+        self.assertEqual(result["seconds"], 4)
+
+
 class FreshDigestTests(unittest.TestCase):
     def test_the_digest_comes_from_a_new_process_running_the_deployed_code(self):
         calls = []

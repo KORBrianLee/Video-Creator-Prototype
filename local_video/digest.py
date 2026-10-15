@@ -360,6 +360,8 @@ def job_digest(job_id, with_signals=True):
         digest["error"] = str(state["error"])[:240]
     if state.get("started_at") and state.get("updated_at"):
         digest["seconds"] = round(state["updated_at"] - state["started_at"])
+    if state.get("memory_after_job"):
+        digest["memory_after_job"] = state["memory_after_job"]
     result = state.get("result") or {}
     shots = result.get("shots") or []
     if shots:
