@@ -31,9 +31,13 @@ def cache_environment(root):
     root = Path(root)
     cache = root / "cache"
     temporary = str(root / "tmp")
-    return {"TEMP": temporary, "TMP": temporary,
+    # Python's tempfile reads TMPDIR before TEMP, and Git Bash exports TMPDIR pointing at the profile on C.
+    return {"TEMP": temporary, "TMP": temporary, "TMPDIR": temporary,
             "HF_HOME": str(cache / "huggingface"), "TORCH_HOME": str(cache / "torch"),
             "XDG_CACHE_HOME": str(cache / "xdg"), "PIP_CACHE_DIR": str(cache / "pip"),
             "TORCHINDUCTOR_CACHE_DIR": str(cache / "torchinductor"), "TRITON_CACHE_DIR": str(cache / "triton"),
-            # SYCL_CACHE_DIR / NEO_CACHE_DIR are left alone: redirecting the Intel kernel cache hung Iris Xe kernels.
+            # The Intel compute driver keeps compiled GPU kernels here (560 MB on Iris Xe). An empty folder makes the
+            # first run recompile every kernel for minutes, which once looked like a hang: copy the old cache first.
+            "NEO_CACHE_DIR": str(cache / "neo_compiler_cache"),
+            "PYTHONPYCACHEPREFIX": str(cache / "pycache"),
             "CUDA_CACHE_PATH": str(cache / "cuda"), "MPLCONFIGDIR": str(cache / "matplotlib")}

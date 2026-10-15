@@ -87,9 +87,41 @@ ADAPTIVE_DEFAULTS = {"threads": "auto", "minimum_free_ram_gib": "auto", "reserve
 FIXED_DEFAULTS = {"threads": 4, "minimum_free_ram_gib": 3.0, "reserve_ram_gib": (1.0, 1.5),
                   "maximum_working_set_gib": 5.0, "gpu_buffer_mib": "auto"}
 
+SITE_CUSTOMIZE = '''"""Written by the installer on every deploy: each process of this runtime keeps temporary files and caches on
+the runtime drive, never on C, whatever environment started it."""
+import os
+import sys
+import tempfile
+
+ENVIRONMENT = {environment}
+os.environ.update(ENVIRONMENT)
+os.makedirs(ENVIRONMENT["TEMP"], exist_ok=True)
+tempfile.tempdir = ENVIRONMENT["TEMP"]
+sys.pycache_prefix = ENVIRONMENT["PYTHONPYCACHEPREFIX"]
+'''
+
+
+def keep_runtimes_on_drive(root):
+    """Both Python runtimes start every process with temporary files, library caches, bytecode and the Intel GPU
+    kernel cache on the runtime drive. A kernel cache the driver already built on C is copied over once, so the
+    first run does not recompile every kernel."""
+    from local_video.storage import cache_environment
+    environment = cache_environment(root)
+    for runtime in ("python", "neodragon-python"):
+        site = root / "runtime" / runtime / "Lib" / "site-packages"
+        if site.is_dir():
+            inside(root, "runtime", runtime, "Lib", "site-packages", "sitecustomize.py").write_text(
+                SITE_CUSTOMIZE.format(environment=repr(environment)), encoding="utf-8")
+    kernels = Path(environment["NEO_CACHE_DIR"])
+    previous = Path(os.environ["LOCALAPPDATA"]) / "NEO" / "neo_compiler_cache" if os.environ.get("LOCALAPPDATA") else None
+    if previous is not None and previous.is_dir() and not kernels.is_dir():
+        shutil.copytree(previous, kernels)
+
+
 def deploy(root, profile=None):
     target = inside(root, "app")
     target.mkdir(parents=True, exist_ok=True)
+    keep_runtimes_on_drive(root)
     allow = {"local_video", ".cursor", "docs", "examples", "tests", "tools"}
     for item in SOURCE.iterdir():
         if item.resolve() == (target / item.name).resolve():

@@ -36,6 +36,30 @@ class DeploymentTests(unittest.TestCase):
         self.assertIn("local-video", result["mcpServers"])
         self.assertEqual(json.loads(resource.read_text(encoding="utf-8"))["threads"], 2)
 
+    def test_runtimes_keep_temporary_files_and_caches_on_the_runtime_drive(self):
+        import sys
+        for runtime in ("python", "neodragon-python"):
+            (self.root / "runtime" / runtime / "Lib" / "site-packages").mkdir(parents=True)
+        previous = self.root / "profile" / "NEO" / "neo_compiler_cache"
+        previous.mkdir(parents=True)
+        (previous / "kernel.cl_cache").write_bytes(b"compiled")
+        with patch.object(installer, "SOURCE", self.source), patch.dict(os.environ, {"LOCALAPPDATA": str(self.root / "profile")}):
+            installer.deploy(self.root)
+        self.assertEqual((self.root / "cache" / "neo_compiler_cache" / "kernel.cl_cache").read_bytes(), b"compiled")
+        self.assertTrue((self.root / "runtime" / "python" / "Lib" / "site-packages" / "sitecustomize.py").is_file())
+        script = self.root / "runtime" / "neodragon-python" / "Lib" / "site-packages" / "sitecustomize.py"
+        saved = (tempfile.tempdir, sys.pycache_prefix)
+        try:
+            elsewhere = r"C:\Users\someone\AppData\Local\Temp"
+            with patch.dict(os.environ, {"TEMP": elsewhere, "TMPDIR": elsewhere}):
+                exec(compile(script.read_text(encoding="utf-8"), str(script), "exec"), {})
+                self.assertEqual((os.environ["TEMP"], os.environ["TMPDIR"]), (str(self.root / "tmp"),) * 2)
+                self.assertEqual(os.environ["NEO_CACHE_DIR"], str(self.root / "cache" / "neo_compiler_cache"))
+            self.assertEqual(tempfile.tempdir, str(self.root / "tmp"))
+            self.assertEqual(sys.pycache_prefix, str(self.root / "cache" / "pycache"))
+        finally:
+            tempfile.tempdir, sys.pycache_prefix = saved
+
     def test_default_install_requires_vulkan_engine_and_update_fetches_it_when_missing(self):
         self.assertEqual(installer.missing_engines(self.root, True), ["engines/vulkan"])
         self.assertEqual(installer.missing_engines(self.root, False), [])
